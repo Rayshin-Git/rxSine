@@ -30,6 +30,193 @@ def one_undo(func):
     return wrap
 
 
+def lock_attrs(node, t=True, r=True, s=True, v=True):
+    if t:
+        t = ["tx", "ty", "tz"]
+    if r:
+        r = ["rx", "ry", "rz"]
+    if s:
+        s = ["sx", "sy", "sz"]
+    if v:
+        v = ["v"]
+    # lock attrs
+    for attr in t + r + s + v:
+        pm.setAttr(node.attr(attr),
+                   lock=True, channelBox=False, keyable=False)
+
+
+def gear_matrix_cns(in_obj,
+                    out_obj=None,
+                    connect_srt='srt',
+                    rot_off=[0, 0, 0],
+                    rot_mult=[1, 1, 1],
+                    scl_mult=[1, 1, 1]):
+    """Create and connect matrix constraint node
+
+    Args:
+        in_obj (transform): the driver object or matrix
+        out_obj (transform, optional): the driven object
+        connect_srt (str, optional): scale rotation traanslation flag
+        rot_off (list, optional): rotation offset for XYZ
+        rot_mult (list, optional): rotation multiplier for XYZ
+        scl_mult (list, optional): scale multiplier for XYZ
+
+    Returns:
+        PyNode: The matrix constraint node
+    """
+    node = pm.createNode("mgear_matrixConstraint")
+    if isinstance(in_obj, pm.PyNode) and in_obj.type() == "matrix":
+        pm.connectAttr(
+            in_obj, node + ".driverMatrix", force=True)
+    else:
+        pm.connectAttr(
+            in_obj + ".worldMatrix[0]", node + ".driverMatrix", force=True)
+
+    # setting rot and scl config
+    node.driverRotationOffsetX.set(rot_off[0])
+    node.driverRotationOffsetY.set(rot_off[1])
+    node.driverRotationOffsetZ.set(rot_off[2])
+
+    node.rotationMultX.set(rot_mult[0])
+    node.rotationMultY.set(rot_mult[1])
+    node.rotationMultZ.set(rot_mult[2])
+
+    node.scaleMultX.set(scl_mult[0])
+    node.scaleMultY.set(scl_mult[1])
+    node.scaleMultZ.set(scl_mult[2])
+
+    if out_obj:
+        pm.connectAttr(out_obj + ".parentInverseMatrix[0]",
+                       node + ".drivenParentInverseMatrix", force=True)
+
+        # calculate rest pose
+        # we use the  outputDriverOffsetMatrix to have in account the offset
+        # rotation when the rest pose is calculated
+        driver_m = om.MMatrix(pm.getAttr(
+            node + ".outputDriverOffsetMatrix"))
+        driven_m = om.MMatrix(pm.getAttr(
+            out_obj + ".parentInverseMatrix[0]"))
+        mult = driver_m * driven_m
+        pm.setAttr(node + ".drivenRestMatrix", mult, type="matrix")
+
+        # connect srt (scale, rotation, translation)
+        if 't' in connect_srt:
+            pm.connectAttr(node.translate,
+                           out_obj.attr("translate"), f=True)
+        if 'r' in connect_srt:
+            pm.connectAttr(node.rotate,
+                           out_obj.attr("rotate"), f=True)
+        if 's' in connect_srt:
+            pm.connectAttr(node.scale,
+                           out_obj.attr("scale"), f=True)
+            pm.connectAttr(node.shear,
+                           out_obj.attr("shear"), f=True)
+
+    return node
+
+
+def addJoint(parent, name, m=datatypes.Matrix(), vis=True):
+    """Create a joint dagNode.
+
+    Note:
+        I'm not using the joint() comand because this is parenting
+        the newly created joint to current selection which might not be desired
+
+    Arguments:
+        parent (dagNode): The parent for the node.
+        name (str): The node name.
+        m (matrix): The matrix for the node transformation (optional).
+        vis (bool): Set the visibility of the new joint.
+
+    Returns:
+        dagNode: The newly created node.
+
+    """
+    node = pm.PyNode(pm.createNode("joint", n=name))
+    node.setTransformation(m)
+    node.setAttr("visibility", vis)
+    if parent is not None:
+        parent.addChild(node)
+
+    return node
+
+
+def addCnstJnt(obj=False,
+               parent=False,
+               noReplace=False,
+               grp=None,
+               jntName=None,
+               *args):
+    """Create one joint for each selected object.
+
+    Args:
+        obj (bool or dagNode, optional): The object to drive the new
+            joint. If False will use the current selection.
+        parent (bool or dagNode, optional): The parent for the joint.
+            If False will try to parent to jnt_org. If jnt_org doesn't
+            exist will parent the joint under the obj
+        noReplace (bool, optional): If True will add the extension
+            "_jnt" to the new joint name
+        grp (pyNode or None, optional): The set to add the new joint.
+            If none will use "rig_deformers_grp"
+        *args: Maya's dummy
+
+    Returns:
+        pyNode: The New created joint.
+
+    """
+    if not obj:
+        oSel = pm.selected()
+    else:
+        oSel = [obj]
+
+    for obj in oSel:
+        if not parent:
+            try:
+                oParent = pm.PyNode("jnt_org")
+            except TypeError:
+                oParent = obj
+        else:
+            oParent = parent
+        if not jntName:
+            if noReplace:
+                jntName = "_".join(obj.name().split("_")) + "_jnt"
+            else:
+                jntName = "_".join(obj.name().split("_")[:-1]) + "_jnt"
+        jnt = addJoint(oParent,
+                       jntName,
+                       obj.getMatrix(worldSpace=True))
+
+        if grp:
+            grp.add(jnt)
+        else:
+            try:
+                defSet = pm.PyNode("rig_deformers_grp")
+                pm.sets(defSet, add=jnt)
+            except TypeError:
+                pm.sets(n="rig_deformers_grp")
+                defSet = pm.PyNode("rig_deformers_grp")
+                pm.sets(defSet, add=jnt)
+
+        jnt.setAttr("segmentScaleCompensate", False)
+        jnt.setAttr("jointOrient", 0, 0, 0)
+        try:
+            cns_m = gear_matrix_cns(obj, jnt)
+            # setting the joint orient compensation in order to have clean
+            # rotation channels
+            m = cns_m.drivenRestMatrix.get()
+            tm = datatypes.TransformationMatrix(m)
+            r = datatypes.degrees(tm.getRotation())
+            jnt.attr("jointOrientX").set(r[0])
+            jnt.attr("jointOrientY").set(r[1])
+            jnt.attr("jointOrientZ").set(r[2])
+        except RuntimeError:
+            for axis in ["tx", "ty", "tz", "rx", "ry", "rz"]:
+                jnt.attr(axis).set(0.0)
+
+    return jnt
+
+
 def addNPO(objs=None, suffix="_npo", rename=False):
     """Add a transform node as a neutral pose
 
@@ -155,12 +342,12 @@ def getPointArrayWithOffset(point_pos, pos_offset=None, rot_offset=None):
     return points
 
 
-def create(parent=None,
-           name="icon",
-           m=datatypes.Matrix(),
-           color=[0, 0, 0],
-           icon="cube",
-           **kwargs):
+def create_ctl(parent=None,
+               name="icon",
+               m=datatypes.Matrix(),
+               color=[0, 0, 0],
+               icon="cube",
+               **kwargs):
     """Icon master function
 
     **Create icon master function.**

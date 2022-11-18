@@ -1,88 +1,39 @@
 import ast
-import os
-import sys
 from functools import partial
 
-import maya.OpenMayaUI as omui
-from PySide2 import QtWidgets, QtCore, QtGui
 from maya import cmds
-from shiboken2 import wrapInstance
 
 import pymel.core as pm
 
-from .pyqt_templates import IntSliderGroup, FloatSliderGroup, FlowLayout
-from ..operation import SineMaster
+from ..ui.templates.main_window import MainWindow, SubWindow
+from ..ui.templates.widgets import IntSliderGroup, FloatSliderGroup, FlowLayout
+from ..ui.widgets.py_combobox import PyCombobox
+from ..ui.widgets.py_list_widget import PyListWidget
+from ..ui.widgets.py_push_button import PyPushButton
+from .widgets.py_icon_button import PyIconButton
+from .widgets.py_line_edit import PyLineEdit
+from ..qt_core import *
+from ..operation import SineSetup
 
 _dir_name = os.path.dirname(__file__)
-qss = os.path.join(_dir_name, 'style/qss/_styles.scss')
-with open(qss, "r") as fh:
-    STYLE = fh.read()
-qss = os.path.join(_dir_name, 'style/qss/_styles2.scss')
-with open(qss, "r") as fh:
-    STYLE2 = fh.read()
-_LOGICAL_DPI_KEY = "_LOGICAL_DPI"
-_L = LANGUAGE = 1  # 0 for English, 1 for Japanese
-PY2 = sys.version_info[0] == 2
+icon_dir = os.path.join(_dir_name, "images", "svg_icons")
+
+_L = LANGUAGE = 0  # 0 for English, 1 for Japanese
 
 COLOR_INDEX = {}
 for __COLOR in range(2, 32):
     COLOR_INDEX[__COLOR] = [round(X * 255.0) for X in cmds.colorIndex(__COLOR, q=1)]
 
 
-def maya_main_window():
-    """Get Maya's main window
-
-    Returns:
-        QMainWindow: main window.
-
-    """
-
-    main_window_ptr = omui.MQtUtil.mainWindow()
-    if PY2:
-        return wrapInstance(long(main_window_ptr), QtWidgets.QWidget)  # noqa
-    return wrapInstance(int(main_window_ptr), QtWidgets.QWidget)
-
-
-def get_logicaldpi():
-    """attempting to "cache" the query to the maya main window for speed
-
-    Returns:
-        int: dpi of the monitor
-    """
-    if _LOGICAL_DPI_KEY not in os.environ.keys():
-        try:
-            logical_dpi = maya_main_window().logicalDpiX()
-        except Exception:
-            logical_dpi = 96
-        finally:
-            os.environ[_LOGICAL_DPI_KEY] = str(logical_dpi)
-    return int(os.environ.get(_LOGICAL_DPI_KEY)) or 96
-
-
-DPI_SCALE = get_logicaldpi() / 96.0
-
-
-class SineUI(QtWidgets.QWidget):
-
-    def __init__(self, parent=None):
-        super(SineUI, self).__init__(parent)
+class SineUI(MainWindow):
+    def __init__(self):
+        super(SineUI, self).__init__()
         self.source_checker = []
-        self.elements = {}
         self.settings_dialog = SineSettingsDialog()
         self.create_widgets()
         self.create_layout()
         self.create_connections()
-        self.setStyleSheet(STYLE)
-
-        # ------------ test area
-        # ['chain_C0_fk12_ctl', 'chain_C0_fk11_ctl', 'chain_C0_fk10_ctl', 'chain_C0_fk9_ctl', 'chain_C0_fk8_ctl',
-        #  'chain_C0_fk7_ctl', 'chain_C0_fk6_ctl', 'chain_C0_fk5_ctl', 'chain_C0_fk4_ctl', 'chain_C0_fk3_ctl',
-        #  'chain_C0_fk2_ctl', 'chain_C0_fk1_ctl', 'chain_C0_fk0_ctl']
-        # self.source_mesh_le.setText(
-        #     str(['pSphere9', 'pSphere8', 'pSphere7', 'pSphere6', 'pSphere5', 'pSphere4', 'pSphere3', 'pSphere2',
-        #          'pSphere1']
-        #         )
-        # )
+        icon_path = os.path.join(icon_dir, "active_menu.svg")
 
     def create_widgets(self):
         font = QtGui.QFont()
@@ -95,34 +46,30 @@ class SineUI(QtWidgets.QWidget):
         self.top_label.setMargin(14 * DPI_SCALE)
 
         text = ["add Controller", "コントローラを追加"]
-        self.left_top_btn = QtWidgets.QPushButton(text[_L])
+        self.left_top_btn = PyPushButton(text[_L])
         text = ["remove Controller", "コントローラを除去"]
-        self.left_top_btn2 = QtWidgets.QPushButton(text[_L])
+        self.left_top_btn2 = PyPushButton(text[_L])
         text = ["Delete Selected", "選択を削除"]
-        self.right_top_btn = QtWidgets.QPushButton(text[_L])
+        self.right_top_btn = PyPushButton(text[_L])
 
-        self.name_spacing_cbx = QtWidgets.QComboBox()
+        self.name_spacing_cbx = PyCombobox()
         cmds.namespace(setNamespace=':')
         namespaces = cmds.namespaceInfo(listOnlyNamespaces=True, recurse=True)
-        try:
-            namespaces.remove("UI")
-            namespaces.remove("shared")
-        except:
-            pass
-        namespaces.insert(0, "-- root --")
+        namespaces = list((set(namespaces) - {'UI', 'shared'}))
+        namespaces.insert(0, "-- root -- (no name space)")
         self.name_spacing_cbx.addItems(namespaces)
 
-        self.source_lw = QtWidgets.QListWidget()
+        self.source_lw = PyListWidget()
         self.source_lw.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         text = ["Create", "コントローラを作成"]
-        self.left_btn = QtWidgets.QPushButton(text[_L])
+        self.left_btn = PyPushButton(text[_L])
         text = ["Create Exp", "エクスプレーションを作成"]
-        self.left_btn2 = QtWidgets.QPushButton(text[_L])
+        self.left_btn2 = PyPushButton(text[_L])
 
-        self.master_lw = QtWidgets.QListWidget()
+        self.master_lw = PyListWidget()
         self.master_lw.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         text = ["Delete All", "全て削除"]
-        self.right_btn2 = QtWidgets.QPushButton(text[_L])
+        self.right_btn2 = PyPushButton(text[_L])
 
     def create_layout(self):
 
@@ -161,7 +108,7 @@ class SineUI(QtWidgets.QWidget):
         right_layout.addLayout(right_btn_layout)
 
         # main
-        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout = QtWidgets.QVBoxLayout()
         main_layout.addWidget(self.top_label)
         main_layout.addWidget(self.name_spacing_cbx)
         main_layout.addLayout(top_left_btn_layout)
@@ -170,6 +117,8 @@ class SineUI(QtWidgets.QWidget):
         horizontal_layout.addLayout(left_layout, 7)
         horizontal_layout.addLayout(right_layout, 3)
         main_layout.addLayout(horizontal_layout)
+
+        self.content_layout.addLayout(main_layout, -2)
 
     def create_connections(self):
         self.left_top_btn.clicked.connect(self.add_source)
@@ -205,44 +154,40 @@ class SineUI(QtWidgets.QWidget):
         if not self.source_lw.selectedItems():
             return
         selected_sets = [i.text() for i in self.source_lw.selectedItems()]
+
+        # collect data
         elements = {}
+        matrices = {}
         for i in selected_sets:
-            current_index = len(list(self.elements.keys()))
+            current_index = len(list(elements.keys()))
             elements[current_index] = ast.literal_eval(i)
+            elements[current_index].reverse()
             try:
-                print(elements)
-                pynodes = [print(pm.PyNode(j)) for j in elements[current_index]]
+                pynodes = [pm.PyNode(j) for j in elements[current_index]]
             except pm.MayaNodeError:
                 text = ["failed to get pynodes from list. index:{}".format(current_index),
                         "{}番のリストからの pynode の取得に失敗しました".format(current_index)]
                 return pm.warning(text[_L])
-        accepted = self.settings_dialog.exec_()
+            matrices[current_index] = [pm.xform(i, q=1, m=1, ws=1) for i in pynodes]
+        print(elements)
+        print(matrices)
+
         self.settings_dialog.show()
-        if accepted:
-            print(self.settings_dialog.config)
-        else:
-            return
-        master = SineMaster(elements, self.settings_dialog.config)
-        self.master_lw.addItem("Sin_" + self.settings_dialog.config["name"])
+        if self.settings_dialog.exec_() == QtWidgets.QDialog.Accepted:
+            master = SineSetup(elements, matrices, self.settings_dialog.config)
+            self.master_lw.addItem(master.config["name"])
 
     def make_exp(self):
         pass
 
     def closeEvent(self, event):
-        super(QtWidgets.QWidget, self).closeEvent()
+        super(MainWindow, self).closeEvent(event)
+        self.settings_dialog.close()
         self.close()
 
-    # def set_ctl_color(self,):
-    #     ctl = pm.selected()[0]
-    #     cmds.setAttr(ctl + ".overrideEnabled", 1)
-    #     cmds.setAttr(ctl + ".overrideRGBColors", 1)
-    #     color = (1, 0, 0)
-    #     for channel, color in zip(("R", "G", "B"), color):
-    #         cmds.setAttr(ctl + ".overrideColor%s" % channel, color)
 
-
-class SineSettingsDialog(QtWidgets.QDialog):
-    def __init__(self, objects=None):
+class SineSettingsDialog(SubWindow):
+    def __init__(self):
         super(SineSettingsDialog, self).__init__()
         self.use_index = 18  # 0(false) ~ 31
         self.raw_color_value = cmds.colorIndex(18, q=1)  # rgb : 0~1
@@ -254,59 +199,51 @@ class SineSettingsDialog(QtWidgets.QDialog):
             use_index=self.use_index,
             color=self.raw_color_value
         )
-        self.objects = objects
+        # self.objects = objects
 
         self.create_widgets()
         self.create_layout()
         self.create_connections()
 
-        self.setFixedSize(382 * DPI_SCALE, 320 * DPI_SCALE)
         self.setWindowTitle("Sine Ctrl Settings")
-        self.setStyleSheet(STYLE)
+        # self.setStyleSheet(STYLE)
+        self.setFixedSize(380 * DPI_SCALE, 352 * DPI_SCALE)
 
     def create_widgets(self):
         font = QtGui.QFont()
         font.setPointSize(6 * DPI_SCALE)
         font.setBold(True)
+        font.setFamily("Segoe UI")
         text = ["Tip : Key Frames will be deleted", "ヒント：キーフレームは削除されます"]
         self.label = QtWidgets.QLabel(text[_L])
         self.label.setAlignment(QtCore.Qt.AlignCenter)
         self.label.setStyleSheet("color:orange;")
         self.label.setFont(font)
+        self.label.setMargin(20)
         text = ["Please enter the Ctrl Name", "コントローラの名前を指定してください"]
-        self.label2 = QtWidgets.QLabel(text[_L])
-        self.label2.setAlignment(QtCore.Qt.AlignCenter)
-        self.label2.setFont(font)
-        self.line_edit = QtWidgets.QLineEdit()
+        # self.label2 = QtWidgets.QLabel(text[_L])
+        # self.label2.setAlignment(QtCore.Qt.AlignCenter)
+        # self.label2.setFont(font)
+        self.line_edit = PyLineEdit(place_holder_text=text[_L])
         self.line_edit.setValidator(QtGui.QRegExpValidator("^[a-zA-Z][a-zA-Z0-9_]*$"))
         text = ["Create", "作成"]
-        self.confirm_btn = QtWidgets.QPushButton(text[_L])
+        self.confirm_btn = PyPushButton(text[_L])
         text = ["Cancel", "キャンセル"]
-        self.cancel_btn = QtWidgets.QPushButton(text[_L])
+        self.cancel_btn = PyPushButton(text[_L])
 
     def create_layout(self):
-        main_layout = QtWidgets.QVBoxLayout(self)
+        main_layout = QtWidgets.QVBoxLayout()
         main_layout.addWidget(self.label)
-        main_layout.addWidget(self.label2)
+        # main_layout.addWidget(self.label2)
         main_layout.addWidget(self.line_edit)
-        self.createCollapsibleContent()
-
-        btn_layout = QtWidgets.QHBoxLayout()
-        btn_layout.addWidget(self.confirm_btn)
-
-        btn_layout.addWidget(self.cancel_btn)
-        main_layout.addLayout(btn_layout)
-        main_layout.addStretch()
-
-    def create_connections(self):
-        self.confirm_btn.clicked.connect(self.on_confirm)
-        self.cancel_btn.clicked.connect(self.reject)
-        # self.collapse_layout.on_clicked.connect(self.change_size)
-        # self.coll.on_clicked.connect(self.change_size)
-
-    def createCollapsibleContent(self):
+        # SUB CONTENTS
         sub_content_layout = QtWidgets.QVBoxLayout()
         form_layout = QtWidgets.QFormLayout()
+        font = QtGui.QFont()
+        font.setPointSize(6 * DPI_SCALE)
+        font.setFamily("Segoe UI")
+
+        # # SLIDERS
         self.fk_size_slider = FloatSliderGroup()
         self.fk_size_slider.set_range(0.1, 10.0)
         self.fk_size_slider.set_value(1.0)
@@ -317,22 +254,28 @@ class SineSettingsDialog(QtWidgets.QDialog):
         self.ik_count_slider.set_range(1, 10)
         text = ["FK Size :　", "FK Ctrl の サイズ　:　"]
         form_layout.addRow(text[_L], self.fk_size_slider)
+        form_layout.labelForField(self.fk_size_slider).setFont(font)
         text = ["IK Size :　", "IK Ctrl の サイズ　:　"]
         form_layout.addRow(text[_L], self.ik_size_slider)
+        form_layout.labelForField(self.ik_size_slider).setFont(font)
         text = ["IK Count :　", "IK Ctrl の 数　:　"]
         form_layout.addRow(text[_L], self.ik_count_slider)
+        form_layout.labelForField(self.ik_count_slider).setFont(font)
 
+        # # COLOR BUTTONS
         self.color_visual_btn = QtWidgets.QPushButton()
         self.color_visual_btn.setMaximumHeight(20 * DPI_SCALE)
         q_color = [round(i * 255.0) for i in self.raw_color_value]
         visual_name = QtGui.QColor(*q_color).name()
-        _style = "QPushButton#pushButton {background-color: %s;}"%visual_name
+        _style = "QPushButton#pushButton {background-color: %s;}" % visual_name
         self.color_visual_btn.setStyleSheet(_style)
-        # self.color_visual_btn.setStyleSheet("background-color: {};".format(visual_name))
         self.color_visual_btn.clicked.connect(self.on_color_btn_clicked)
 
         text = ["Ctl Color :　", "Ctrlの色指定　:　"]
-        form_layout.addRow(text[_L], QtWidgets.QLabel())
+        null = QtWidgets.QLabel()
+        form_layout.addRow(text[_L], null)
+        form_layout.labelForField(null).setFont(font)
+
         self.index_grp = ColorIndexGroup()
         self.index_grp.setMaximumHeight(80 * DPI_SCALE)
         self.index_grp.btn_clicked.connect(self.set_color_index)
@@ -342,12 +285,22 @@ class SineSettingsDialog(QtWidgets.QDialog):
 
         self.content_widget = QtWidgets.QFrame()
         self.content_widget.setLayout(sub_content_layout)
-        # self.collapse_layout.set_layout(sub_content_widget)
 
-        # self.collapse_layout = CollapsibleSimplified(None, sub_content_widget, "Option")
-        # self.collapse_layout.setMinimumWidth(10)
-        # self.layout().addWidget(self.collapse_layout)
-        self.layout().addWidget(self.content_widget)
+        main_layout.addWidget(self.content_widget)
+        main_layout.addStretch()
+
+        btn_layout = QtWidgets.QHBoxLayout()
+        btn_layout.addWidget(self.confirm_btn)
+
+        btn_layout.addWidget(self.cancel_btn)
+        main_layout.addLayout(btn_layout)
+        self.content_layout.addLayout(main_layout)
+
+    def create_connections(self):
+        self.confirm_btn.clicked.connect(self.on_confirm)
+        self.cancel_btn.clicked.connect(self.reject)
+        # self.collapse_layout.on_clicked.connect(self.change_size)
+        # self.coll.on_clicked.connect(self.change_size)
 
     def on_color_btn_clicked(self):
         current_color = self.raw_color_value
@@ -390,6 +343,168 @@ class SineSettingsDialog(QtWidgets.QDialog):
             color=[i for i in self.raw_color_value]
         )
         self.accept()
+
+    def mousePressEvent(self, event):
+        # to de-focus the lineEdit
+        focused_widget = QtWidgets.QApplication.focusWidget()
+        if isinstance(focused_widget, PyLineEdit):
+            focused_widget.clearFocus()
+        QtWidgets.QMainWindow.mousePressEvent(self, event)
+        if event.buttons() == QtCore.Qt.LeftButton:
+            self.dragPos = event.globalPos()
+            event.accept()
+
+
+#
+# class SineSettingsDialogOLD(QtWidgets.QDialog):
+#     def __init__(self):
+#         super(SineSettingsDialog, self).__init__()
+#         self.use_index = 18  # 0(false) ~ 31
+#         self.raw_color_value = cmds.colorIndex(18, q=1)  # rgb : 0~1
+#         self.config = dict(
+#             name="untitled",
+#             fk_size=1.0,
+#             ik_size=1.0,
+#             ik_count=1,
+#             use_index=self.use_index,
+#             color=self.raw_color_value
+#         )
+#         # self.objects = objects
+#
+#         self.create_widgets()
+#         self.create_layout()
+#         self.create_connections()
+#
+#         self.setFixedSize(382 * DPI_SCALE, 320 * DPI_SCALE)
+#         self.setWindowTitle("Sine Ctrl Settings")
+#         self.setStyleSheet(STYLE)
+#
+#     def create_widgets(self):
+#         font = QtGui.QFont()
+#         font.setPointSize(6 * DPI_SCALE)
+#         font.setBold(True)
+#         text = ["Tip : Key Frames will be deleted", "ヒント：キーフレームは削除されます"]
+#         self.label = QtWidgets.QLabel(text[_L])
+#         self.label.setAlignment(QtCore.Qt.AlignCenter)
+#         self.label.setStyleSheet("color:orange;")
+#         self.label.setFont(font)
+#         text = ["Please enter the Ctrl Name", "コントローラの名前を指定してください"]
+#         self.label2 = QtWidgets.QLabel(text[_L])
+#         self.label2.setAlignment(QtCore.Qt.AlignCenter)
+#         self.label2.setFont(font)
+#         self.line_edit = QtWidgets.QLineEdit()
+#         self.line_edit.setValidator(QtGui.QRegExpValidator("^[a-zA-Z][a-zA-Z0-9_]*$"))
+#         text = ["Create", "作成"]
+#         self.confirm_btn = QtWidgets.QPushButton(text[_L])
+#         text = ["Cancel", "キャンセル"]
+#         self.cancel_btn = QtWidgets.QPushButton(text[_L])
+#
+#     def create_layout(self):
+#         main_layout = QtWidgets.QVBoxLayout(self)
+#         main_layout.addWidget(self.label)
+#         main_layout.addWidget(self.label2)
+#         main_layout.addWidget(self.line_edit)
+#         self.createCollapsibleContent()
+#
+#         btn_layout = QtWidgets.QHBoxLayout()
+#         btn_layout.addWidget(self.confirm_btn)
+#
+#         btn_layout.addWidget(self.cancel_btn)
+#         main_layout.addLayout(btn_layout)
+#         main_layout.addStretch()
+#
+#     def create_connections(self):
+#         self.confirm_btn.clicked.connect(self.on_confirm)
+#         self.cancel_btn.clicked.connect(self.reject)
+#         # self.collapse_layout.on_clicked.connect(self.change_size)
+#         # self.coll.on_clicked.connect(self.change_size)
+#
+#     def createCollapsibleContent(self):
+#         sub_content_layout = QtWidgets.QVBoxLayout()
+#         form_layout = QtWidgets.QFormLayout()
+#         self.fk_size_slider = FloatSliderGroup()
+#         self.fk_size_slider.set_range(0.1, 10.0)
+#         self.fk_size_slider.set_value(1.0)
+#         self.ik_size_slider = FloatSliderGroup()
+#         self.ik_size_slider.set_range(0.1, 10.0)
+#         self.ik_size_slider.set_value(1.0)
+#         self.ik_count_slider = IntSliderGroup()
+#         self.ik_count_slider.set_range(1, 10)
+#         text = ["FK Size :　", "FK Ctrl の サイズ　:　"]
+#         form_layout.addRow(text[_L], self.fk_size_slider)
+#         text = ["IK Size :　", "IK Ctrl の サイズ　:　"]
+#         form_layout.addRow(text[_L], self.ik_size_slider)
+#         text = ["IK Count :　", "IK Ctrl の 数　:　"]
+#         form_layout.addRow(text[_L], self.ik_count_slider)
+#
+#         self.color_visual_btn = QtWidgets.QPushButton()
+#         self.color_visual_btn.setMaximumHeight(20 * DPI_SCALE)
+#         q_color = [round(i * 255.0) for i in self.raw_color_value]
+#         visual_name = QtGui.QColor(*q_color).name()
+#         _style = "QPushButton#pushButton {background-color: %s;}" % visual_name
+#         self.color_visual_btn.setStyleSheet(_style)
+#         # self.color_visual_btn.setStyleSheet("background-color: {};".format(visual_name))
+#         self.color_visual_btn.clicked.connect(self.on_color_btn_clicked)
+#
+#         text = ["Ctl Color :　", "Ctrlの色指定　:　"]
+#         form_layout.addRow(text[_L], QtWidgets.QLabel())
+#         self.index_grp = ColorIndexGroup()
+#         self.index_grp.setMaximumHeight(80 * DPI_SCALE)
+#         self.index_grp.btn_clicked.connect(self.set_color_index)
+#         sub_content_layout.addLayout(form_layout)
+#         sub_content_layout.addWidget(self.color_visual_btn)
+#         sub_content_layout.addWidget(self.index_grp)
+#
+#         self.content_widget = QtWidgets.QFrame()
+#         self.content_widget.setLayout(sub_content_layout)
+#         # self.collapse_layout.set_layout(sub_content_widget)
+#
+#         # self.collapse_layout = CollapsibleSimplified(None, sub_content_widget, "Option")
+#         # self.collapse_layout.setMinimumWidth(10)
+#         # self.layout().addWidget(self.collapse_layout)
+#         self.layout().addWidget(self.content_widget)
+#
+#     def on_color_btn_clicked(self):
+#         current_color = self.raw_color_value
+#         _color = cmds.colorEditor(rgb=current_color).split()[:-1]
+#         if _color == ['0', '0', '0']:  # check if the colorEditor dialog was canceled
+#             return
+#         raw_color = [float(i) for i in _color]
+#         raw_q_color = [round(float(i) * 255.0) for i in _color]
+#         cc_color = [round(float(i) * 255.0) for i in cmds.colorManagementConvert(toDisplaySpace=raw_color)]
+#         visual_name = QtGui.QColor(*cc_color).name()
+#         print(cc_color)
+#         self.color_visual_btn.setStyleSheet("background-color: {};".format(visual_name))
+#         self.raw_color_value = [i / 255.0 for i in QtGui.QColor(*raw_q_color).getRgb()[:-1]]
+#         self.use_index = False
+#
+#     def set_color_index(self):
+#         color = QtGui.QColor(self.index_grp.current_cc_color)
+#         self.color_visual_btn.setStyleSheet("background-color: {};".format(color.name()))
+#         self.raw_color_value = [i / 255.0 for i in color.getRgb()[:-1]]
+#         self.use_index = self.index_grp.current_index
+#
+#     @property
+#     def config(self):
+#         return self._config
+#
+#     @config.setter
+#     def config(self, config):
+#         self._config = config
+#
+#     def on_confirm(self):
+#         if not self.line_edit.text():
+#             text = ["Please Set a Ctrl Name!", "コントローラーの名前を指定してください"]
+#             return pm.warning(text[_L])
+#         self.config = dict(
+#             name=self.line_edit.text(),
+#             fk_size=self.fk_size_slider.value(),
+#             ik_size=self.ik_size_slider.value(),
+#             ik_count=self.ik_count_slider.value(),
+#             use_index=self.use_index,
+#             color=[i for i in self.raw_color_value]
+#         )
+#         self.accept()
 
 
 class ColorIndexGroup(QtWidgets.QWidget):
@@ -434,46 +549,6 @@ class ColorIndexGroup(QtWidgets.QWidget):
         self.current_cc_color = self.cc_color_index[index]
         self.btn_clicked.emit()
 
-
-class TESTDIALOG(QtWidgets.QDialog):
-    def __init__(self, parent=maya_main_window()):
-        super(TESTDIALOG, self).__init__(parent)
-
-        self.setWindowTitle("TestSine")
-        self.setLayout(QtWidgets.QVBoxLayout())
-        self.layout().addWidget(SineUI())
-
-        self.resize(600 * DPI_SCALE, 400 * DPI_SCALE)
-
-
-class TESTDIALOG2(QtWidgets.QDialog):
-    def __init__(self, parent=maya_main_window()):
-        super(TESTDIALOG2, self).__init__(parent)
-
-        self.setWindowTitle("Test")
-        self.setLayout(QtWidgets.QVBoxLayout())
-        btn = QtWidgets.QPushButton("test")
-        self.layout().addWidget(btn)
-        btn.clicked.connect(self.open_dialog)
-        self.resize(600 * DPI_SCALE, 400 * DPI_SCALE)
-
-    def open_dialog(self):
-        dialog = SineSettingsDialog()
-        accepted = dialog.exec_()
-        if accepted:
-            print(dialog.config)
-        dialog.show()
-
-
-if __name__ == '__main__':
-    try:
-        dialog.close()  # noqa
-        dialog.deleteLater()  # noqa'
-    except:
-        pass
-
-    dialog = SineUI()
-    dialog.show()
 
 """
     def store_config_file(self):

@@ -1,5 +1,7 @@
 from PySide2 import QtWidgets, QtCore
 
+from ...ui.widgets.py_slider import PySlider
+
 
 class QHLine(QtWidgets.QFrame):
     def __init__(self):
@@ -13,7 +15,8 @@ class IntSliderGroup(QtWidgets.QHBoxLayout):
 
     def __init__(self):
         QtWidgets.QHBoxLayout.__init__(self)
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider = PySlider()
+        self.slider.setOrientation(QtCore.Qt.Orientation.Horizontal)
         self.spin = QtWidgets.QSpinBox()
         self.addWidget(self.spin)
         self.addWidget(self.slider)
@@ -44,7 +47,8 @@ class FloatSliderGroup(QtWidgets.QHBoxLayout):
 
     def __init__(self):
         QtWidgets.QHBoxLayout.__init__(self)
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider = PySlider()
+        self.slider.setOrientation(QtCore.Qt.Orientation.Horizontal)
         self.spin = QtWidgets.QDoubleSpinBox()
         self.addWidget(self.spin)
         self.addWidget(self.slider)
