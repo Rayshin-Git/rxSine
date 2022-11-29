@@ -6,6 +6,30 @@ import maya.OpenMaya as om
 from pymel.core import datatypes
 
 
+def get_defaultMatrix(transform):
+    return [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, *transform, 1.0]
+
+
+def get_average_distance_on_curve(curve, locators=2):
+    if not isinstance(locators, int):
+        try:
+            pm.warning("cut should be int, try to convert")
+            cut = int(locators)
+        except ValueError:
+            return pm.warning("convert failed, cancelled")
+    if not locators >= 2:
+        return pm.warning("locator numbers must>=2")
+    curve = pm.PyNode(curve)
+    curve_length = float(curve.length())
+    average_length = curve_length / (locators - 1)
+    pos_array = []
+    for cut in range(locators):
+        param = curve.findParamFromLength(average_length * cut)
+        pos = pm.pointOnCurve(curve, pr=param, p=True)
+        pos_array.append(pos)
+    return pos_array
+
+
 def one_undo(func):
     """Decorator - guarantee close chunk.
 
@@ -43,6 +67,14 @@ def lock_attrs(node, t=True, r=True, s=True, v=True):
     for attr in t + r + s + v:
         pm.setAttr(node.attr(attr),
                    lock=True, channelBox=False, keyable=False)
+
+
+def create_group(name, matrix=None, parent=None):
+    grp = pm.createNode("transform", n=name)
+    if matrix is not None:
+        pm.xform(grp, m=matrix)
+    pm.parent(grp, parent)
+    return grp
 
 
 def gear_matrix_cns(in_obj,

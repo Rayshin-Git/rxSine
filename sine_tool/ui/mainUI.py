@@ -251,7 +251,7 @@ class SineSettingsDialog(SubWindow):
         self.ik_size_slider.set_range(0.1, 10.0)
         self.ik_size_slider.set_value(1.0)
         self.ik_count_slider = IntSliderGroup()
-        self.ik_count_slider.set_range(1, 10)
+        self.ik_count_slider.set_range(2, 10)
         text = ["FK Size :　", "FK Ctrl の サイズ　:　"]
         form_layout.addRow(text[_L], self.fk_size_slider)
         form_layout.labelForField(self.fk_size_slider).setFont(font)
