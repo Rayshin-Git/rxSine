@@ -6,6 +6,21 @@ import maya.OpenMaya as om
 from pymel.core import datatypes
 
 
+def getWalkTag(node):
+    """Get Controller tag
+
+    Arguments:
+        node (dagNode): Controller object with tag
+
+    Returns:
+        tag: Controller tag
+
+    """
+    tag = node.listConnections(t="controller", et=True)
+    if tag:
+        return tag[0]
+
+
 def get_defaultMatrix(transform):
     return [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, *transform, 1.0]
 
@@ -173,6 +188,18 @@ def addJoint(parent, name, m=datatypes.Matrix(), vis=True):
     return node
 
 
+def addParentJnt(parent, name, m=datatypes.Matrix(), vis=True):
+    node = pm.PyNode(pm.createNode("joint", n=name))
+    node.setTransformation(m)
+    node.setAttr("visibility", vis)
+    if parent is not None:
+        children = parent.getChildren()
+        parent.addChild(node)
+        pm.parent(children, node)
+
+    return node
+
+
 def addCnstJnt(obj=False,
                parent=False,
                noReplace=False,
@@ -268,7 +295,7 @@ def addNPO(objs=None, suffix="_npo", rename=False):
     for obj in objs:
         oParent = obj.getParent()
         oTra = pm.createNode("transform",
-                             n=obj.name() + suffix,
+                             n=obj.shortName() + suffix,
                              p=oParent,
                              ss=True)
         oTra.setTransformation(obj.getMatrix())
