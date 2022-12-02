@@ -10,53 +10,6 @@ from .helper import addNPO, addJoint, create_ctl, addCnstJnt, \
     get_defaultMatrix, addParentJnt, getWalkTag
 
 
-def crete_exp(masterName, elements):
-    joint_count = len(elements)
-
-    EXP = """
-    float $xVal = {_masterName}.xVal * 0.1;
-    float $yVal = {_masterName}.yVal * 0.1;
-    float $zVal = {_masterName}.zVal * 0.1;
-    float $falloff = {_masterName}.falloff * ({_joint_count}-1) * 0.1;  
-    float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) * (($falloff / 5) + 1);
-    float $freq = {_masterName}.speed * 0.1 ;
-    float $delay = {_masterName}.delay * -5;
-    float $off = {_masterName}.offset; \n
-    """.format(_masterName=masterName, _joint_count=joint_count)
-
-    elements.reverse()
-    for index, item in enumerate(elements):
-        if isinstance(item, str):
-            try:
-                pm.PyNode(item)
-            except:
-                return pm.warning(item, " is not valid")
-
-        EXP += """
-        {_item}.rotateZ = 
-        sin( time * $freq * 3.141592653589793 * 2 
-        + $off 
-        + $delay 
-        * ({_index} + 1 - clamp(0,{_index},$falloff)) / ({_joint_count} * 2))      
-        // * $totalAmp 
-        * 10
-        * ({_index} + 1 - clamp(0,{_index},$falloff)) / ({_joint_count} * 2)      
-        * (1.0 - ({_index} + 1) / ({_joint_count} * 2))                               
-        * $zVal; \n
-        """.format(_item=item,
-                   _index=index,
-                   # _joint_count=float(joint_count * 2),
-                   _joint_count=float(joint_count),
-                   )
-        pm.delete(item, expressions=1)
-    pm.expression(s=EXP,
-                  ae=1, uc='all',
-                  o="",
-                  n=(elements[0] + "_exp"))
-    pm.setAttr("SineSCA_MCtl.speed", 10)
-    pm.setAttr("SineSCA_MCtl.zVal", 5)
-
-
 def alphabet_index(index):
     if index > 26 * 26:
         return pm.warning("number too big")
@@ -287,6 +240,12 @@ class FKSetup:
 
     def create_ctrls(self):
         self.ctls_fk = []
+        # check if the controller is on negate side.
+        aim_V = (pm.PyNode(self.slaves[1]).getTranslation(ws=1) - pm.PyNode(self.slaves[0]).getTranslation(
+            ws=1)).normal()
+        x_axis = Vector(pm.PyNode(self.slaves[0]).getMatrix()[0][:-1]).normal()
+        negate_check = aim_V != x_axis
+        v = Vector(-1, 0, 0) if negate_check else Vector(1, 0, 0)
         for i in range(len(self.slaves)):
             # create controller
             name = self.FK_chain_Grp_name + "_{}_".format(i)
@@ -301,7 +260,7 @@ class FKSetup:
                              w=length,
                              h=self.fk_size,
                              d=self.fk_size,
-                             po=Vector(1, 0, 0) * length / 2.0,
+                             po=v * length / 2.0,
                              )
             pm.parent(self.jnt_fk[i], ctl)
             parent_tag = getWalkTag(pm.PyNode("Sine_{}_MCtl".format(self.name))) if i == 0 else getWalkTag(
@@ -313,7 +272,7 @@ class FKSetup:
     def connect_slave(self):
         for fk, slave in zip(self.jnt_fk, self.slaves):
             fk.scale >> pm.PyNode(slave).scale
-            pm.parentConstraint(fk, slave, mo=1, n=pm.PyNode(slave).name() + "_tempCns")
+            pm.parentConstraint(fk, slave, mo=0, n=pm.PyNode(slave).name() + "_tempCns")
 
 
 class SineSetup:
@@ -329,8 +288,8 @@ class SineSetup:
             color:rgb 0~1 -> (float,float,float)}
         """
         # attrs
-        self.fk_setup = None
-        self.ik_setup = None
+        self.fk_setups = []
+        self.ik_setups = []
         self.element_grp = None
         self.master_grp = None
         self.master_ctl = None
@@ -338,31 +297,29 @@ class SineSetup:
         self.slaves = slaves
         self.matrices = matrices
         self.config = config
-        self.ctrls = {}
-        self.jnt_ik = []
 
         # steps
         self.create_master()
         self.create_content()
-        # self.group_up()
+        self.set_exp()
 
     def create_content(self):
         # # FK setup
-        size = self.config["fk_size"]
         for index in self.slaves:
-            self.fk_setup = FKSetup(slaves=self.slaves[index],
-                                    matrices=self.matrices[index],
-                                    config=self.config,
-                                    index=index,
-                                    parent=self.element_grp)
-
-        # spline IK setup
-        for index in self.slaves:
-            self.ik_setup = SplineIKSetup(slaves=self.fk_setup.jnt_offset,
-                                          matrices=self.matrices[index],
-                                          config=self.config,
-                                          index=index,
-                                          parent=self.element_grp)
+            fk_setup = FKSetup(slaves=self.slaves[index],
+                               matrices=self.matrices[index],
+                               config=self.config,
+                               index=index,
+                               parent=self.element_grp)
+            self.fk_setups.append(fk_setup)
+            # spline IK setup
+            # for index in self.slaves:
+            ik_setup = SplineIKSetup(slaves=fk_setup.jnt_offset,
+                                     matrices=self.matrices[index],
+                                     config=self.config,
+                                     index=index,
+                                     parent=self.element_grp)
+            self.ik_setups.append(ik_setup)
 
     def create_master(self):
         size = 0.5 * self.config["ik_size"]
@@ -412,9 +369,57 @@ class SineSetup:
         lock_attrs(self.master_grp)
         self.master_ctl = masterCC
 
-    def group_up(self):
-        pass
+    def set_exp(self):
+        for fk_setup in self.fk_setups:
+            elements = fk_setup.ctls_fk
+            self._set_exp(self.master_ctl, elements)
 
+    @staticmethod
+    def _set_exp(masterCtl, elements):
+        joint_count = len(elements)
+
+        EXP = """
+        float $xVal = {_masterName}.xVal * 0.1;
+        float $yVal = {_masterName}.yVal * 0.1;
+        float $zVal = {_masterName}.zVal * 0.1;
+        float $falloff = {_masterName}.falloff * ({_joint_count}-1) * 0.1;  
+        float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) * (($falloff / 5) + 1);
+        float $freq = {_masterName}.speed * 0.1 ;
+        float $delay = {_masterName}.delay * -5;
+        float $off = {_masterName}.offset; \n
+        """.format(_masterName=masterCtl.name(), _joint_count=joint_count)
+
+        elements.reverse()
+        for index, item in enumerate(elements):
+            if isinstance(item, str):
+                try:
+                    pm.PyNode(item)
+                except:
+                    return pm.warning(item, " is not valid")
+
+            EXP += """
+            {_item}.rotateZ = 
+            sin( time * $freq * 3.141592653589793 * 2 
+            + $off 
+            + $delay 
+            * ({_index} + 1 - clamp(0,{_index},$falloff)) / ({_joint_count} * 2))      
+            // * $totalAmp 
+            * 10
+            * ({_index} + 1 - clamp(0,{_index},$falloff)) / ({_joint_count} * 2)      
+            * (1.0 - ({_index} + 1) / ({_joint_count} * 2))                               
+            * $zVal; \n
+            """.format(_item=item,
+                       _index=index,
+                       # _joint_count=float(joint_count * 2),
+                       _joint_count=float(joint_count),
+                       )
+            pm.delete(item, expressions=1)
+        pm.expression(s=EXP,
+                      ae=1, uc='all',
+                      o="",
+                      n=(elements[0] + "_exp"))
+        pm.setAttr(masterCtl.speed, 10)
+        pm.setAttr(masterCtl.zVal, 5)
 # （（sin(time *$freq + $off + $delay * ((jointAdj - clamp(0, jointNo,$falloff)) - 1) / (jointTotal - 1)) * $totalAmp * (
 # (jointAdj - clamp(0, jointNo, $falloff)) - 1) / (jointTotal - 1) * (1.0 - (2 / jointTotal))) * $xVal);
 #
