@@ -246,8 +246,9 @@ class FKSetup:
         # check if the controller is on negate side.
         aim_V = (pm.PyNode(self.slaves[1]).getTranslation(ws=1) - pm.PyNode(self.slaves[0]).getTranslation(
             ws=1)).normal()
-        x_axis = Vector(pm.PyNode(self.slaves[0]).getMatrix()[0][:-1]).normal()
-        negate_check = aim_V != x_axis
+        x_axis = Vector(pm.PyNode(self.slaves[0]).getMatrix(ws=1)[0][:-1]).normal()
+        negate_check = aim_V.dot(x_axis) != 1.0
+
         v = Vector(-1, 0, 0) if negate_check else Vector(1, 0, 0)
         for i in range(len(self.slaves)):
             # create controller
@@ -433,7 +434,16 @@ class SineSetup:
         element_grp_name = ELEMENT_Grp.format(_name=self.config["name"])
 
         # CREATE THE GLOBAL CONTROLLER---
-        root_matrix = pm.PyNode(self.slaves[0][0]).getMatrix(ws=1)  # TODO : change this to average value
+        root_matrix = None
+        for i in range(len(self.slaves)):
+            chain_root = pm.PyNode(self.slaves[i][0])
+            this_matrix = chain_root.getMatrix(ws=1)
+            if root_matrix is None:
+                root_matrix = this_matrix
+            else:
+                root_matrix += this_matrix
+            root_matrix = root_matrix / (i + 1)
+
         masterCC = create_ctl(parent=None,
                               name=element_grp_name + "_MCtl",
                               m=root_matrix,
@@ -561,14 +571,14 @@ class SineSetup:
             // -----------------------------------------------------------------------;
             float $falloffX = {_masterName}.falloffX * ({_joint_count}) * 0.1;  
             float $xVal = {_masterName}.ampX * 0.1 * (($falloffX / 5) + 1);
-            float $freqX = {_masterName}.speedX * 0.1 * {_tau} ;
+            float $freqX = {_masterName}.speedX * 0.1  * {_tau} ;
             float $delayX = {_masterName}.delayX * -5;
             float $offX = {_masterName}.offsetX;
             float $rdmX = {_masterName}.rdmX * noise(0.1 * {_masterName}.rdmX + {_chain_index});
             // -----------------------------------------------------------------------;
             float $falloffY = {_masterName}.falloffY * ({_joint_count}) * 0.1;  
             float $yVal = {_masterName}.ampY * 0.1* (($falloffY / 5) + 1);
-            float $freqY = {_masterName}.speedY * 0.1 * {_tau} ;
+            float $freqY = {_masterName}.speedY * 0.1  * {_tau} ;
             float $delayY = {_masterName}.delayY * -5;
             float $offY = {_masterName}.offsetY;
             float $rdmY = {_masterName}.rdmY * noise(0.1 * {_masterName}.rdmY + {_chain_index});
