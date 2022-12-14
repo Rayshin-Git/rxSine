@@ -1,5 +1,8 @@
+from math import tau
+
 import pymel.core as pm
-from mgear.rigbits import connectWorldTransform
+from maya import cmds
+from mgear.rigbits import connectWorldTransform, addJnt
 from pymel.core import datatypes
 from pymel.core.datatypes import Point, Vector, Matrix
 from mgear.core.applyop import gear_matrix_cns
@@ -275,6 +278,126 @@ class FKSetup:
             pm.parentConstraint(fk, slave, mo=0, n=pm.PyNode(slave).name() + "_tempCns")
 
 
+class RibbonSetup:
+    """
+        Sine Ribbon constructions for single chain
+        """
+
+    def __init__(self, slaves_count, config, index, fk_setup=None):
+        """
+        getting the attributes from parent SineSetup for generate the Spline IK setup
+        """
+        # attrs
+        self.name = config["name"]
+        self.slaves_count = slaves_count
+        self.index = index
+        self.fk_setup = fk_setup
+
+        self.ribbon = None
+        self.ribbon_grp = None
+        self.follicle_grp = None
+        self.follicle_list = []
+        self.sine_deformer = None
+
+        self.base_name = ELEMENT_Grp.format(_name=self.name) + "_"
+        self.FK_chain_Grp_name = FK_Grp.format(_name=self.name, _chain_index=alphabet_index(self.index))
+
+        # steps
+        self.create_nurbsPlane()
+        self.create_follicle()
+        self.create_deformer()
+
+    def create_nurbsPlane(self):
+        nurbsPlane = pm.nurbsPlane(p=(0, 0, 0), ax=(0, 1, 0), lr=0.1, d=3, ch=3,
+                                   w=self.slaves_count,
+                                   u=self.slaves_count * 10,
+                                   n="ribbon_test")[0]
+        pm.delete(nurbsPlane, constructionHistory=True)
+        ribbon_grp = addNPO(nurbsPlane)
+
+        self.ribbon = nurbsPlane
+        self.ribbon_grp = ribbon_grp
+
+    def create_follicle(self):
+        shape = self.ribbon.getShapes()
+        follicle_grp = pm.createNode("transform", n="f_grp")
+        follicle_grp.setParent(self.ribbon_grp)
+        for i in range(self.slaves_count + 1):
+            follicle, follicleShape = self._create_follicle(shape, name="blah", uVal=i / self.slaves_count)
+            pm.parent(follicle, follicle_grp)
+            # addJnt(follicle)
+        self.follicle_grp = follicle_grp
+
+    def create_deformer(self):
+        self.sine_deformer = self._create_deformer(defType='sine', lowBound=0, highBound=1, rotate=(0, 0, 90),
+                                                   objects=[self.ribbon],
+                                                   name=self.ribbon.name(),
+                                                   translate=(self.slaves_count / 2.0, 0, 0),
+                                                   scale=(self.slaves_count / 2.0,
+                                                          self.slaves_count,
+                                                          self.slaves_count / 2.0))
+
+    @staticmethod
+    def _create_follicle(inputSurface=[], scaleGrp='', uVal=0.5, vVal=0.5, hide=1, name='follicle'):
+        # Create a follicle
+        follicleShape = pm.createNode('follicle')
+        # Get the transform of the follicle
+        follicleTrans = pm.listRelatives(follicleShape, parent=True)[0]
+        # Rename the follicle
+        follicleTrans = pm.rename(follicleTrans, name)
+        # follicleShape = pm.rename(cmds.listRelatives(follicleTrans, c=True)[0], (name + 'Shape'))
+        follicleShape = follicleTrans.getShape()
+        # If the inputSurface is of type 'nurbsSurface', connect the surface to the follicle
+        if pm.objectType(inputSurface[0]) == 'nurbsSurface':
+            pm.connectAttr((inputSurface[0] + '.local'), (follicleShape + '.inputSurface'))
+        # If the inputSurface is of type 'mesh', connect the surface to the follicle
+        if pm.objectType(inputSurface[0]) == 'mesh':
+            pm.connectAttr((inputSurface[0] + '.outMesh'), (follicleShape + '.inputMesh'))
+        # Connect the worldMatrix of the surface into the follicleShape
+        cmds.connectAttr((inputSurface[0] + '.worldMatrix[0]'), (follicleShape + '.inputWorldMatrix'))
+        # pm the follicleShape to it's transform
+        pm.connectAttr((follicleShape + '.outRotate'), (follicleTrans + '.rotate'))
+        pm.connectAttr((follicleShape + '.outTranslate'), (follicleTrans + '.translate'))
+        # Set the uValue and vValue for the current follicle
+        pm.setAttr((follicleShape + '.parameterU'), uVal)
+        pm.setAttr((follicleShape + '.parameterV'), vVal)
+        # Lock the translate/rotate of the follicle
+        pm.setAttr((follicleTrans + '.translate'), lock=True)
+        pm.setAttr((follicleTrans + '.rotate'), lock=True)
+        # If it was set to be hidden, hide the follicle
+        if hide:
+            pm.setAttr((follicleShape + '.visibility'), 0)
+        # If a scale-group was defined and exists
+        if scaleGrp and pm.objExists(scaleGrp):
+            # Connect the scale-group to the follicle
+            pm.connectAttr((scaleGrp + '.scale'), (follicleTrans + '.scale'))
+            # Lock the scale of the follicle
+            pm.setAttr((follicleTrans + '.scale'), lock=True)
+        # Return the follicle and it's shape
+        return follicleTrans, follicleShape
+
+    @staticmethod
+    def _create_deformer(objects=[], defType=None, lowBound=-1, highBound=1, translate=None, rotate=None,
+                         scale=None,
+                         name='nonLinear'):
+        # If something went wrong or the type is not valid, raise exception
+        if not objects or defType not in ['bend', 'flare', 'sine', 'squash', 'twist', 'wave']:
+            raise Exception("function: 'nonlinearDeformer' - Make sure you specified a mesh and a valid deformer")
+        # Create and rename the deformer
+        nonLinDef = cmds.nonLinear(objects[0].name(), type=defType, lowBound=lowBound, highBound=highBound,
+                                   n=name + '_' + defType + '_def')
+        # # If translate was specified, set the translate
+        if translate:
+            pm.setAttr((nonLinDef[1] + '.translate'), translate[0], translate[1], translate[2])
+        # If rotate was specified, set the rotate
+        if rotate:
+            pm.setAttr((nonLinDef[1] + '.rotate'), rotate[0], rotate[1], rotate[2])
+        if scale:
+            pm.setAttr((nonLinDef[1] + '.scale'), scale[0], scale[1], scale[2])
+        # Return the deformer
+        return nonLinDef
+
+
 class SineSetup:
     def __init__(self, slaves, matrices, config):
         """
@@ -288,6 +411,7 @@ class SineSetup:
             color:rgb 0~1 -> (float,float,float)}
         """
         # attrs
+        self.ribbon_setups = []
         self.fk_setups = []
         self.ik_setups = []
         self.element_grp = None
@@ -299,27 +423,10 @@ class SineSetup:
         self.config = config
 
         # steps
+        USE_RIBBON = False
         self.create_master()
-        self.create_content()
-        self.set_exp()
-
-    def create_content(self):
-        # # FK setup
-        for index in self.slaves:
-            fk_setup = FKSetup(slaves=self.slaves[index],
-                               matrices=self.matrices[index],
-                               config=self.config,
-                               index=index,
-                               parent=self.element_grp)
-            self.fk_setups.append(fk_setup)
-            # spline IK setup
-            # for index in self.slaves:
-            ik_setup = SplineIKSetup(slaves=fk_setup.jnt_offset,
-                                     matrices=self.matrices[index],
-                                     config=self.config,
-                                     index=index,
-                                     parent=self.element_grp)
-            self.ik_setups.append(ik_setup)
+        self.create_content(USE_RIBBON)
+        self.set_exp(USE_RIBBON)
 
     def create_master(self):
         size = 0.5 * self.config["ik_size"]
@@ -345,51 +452,75 @@ class SineSetup:
             self.master_grp = addNPO(self.element_grp, rename=MASTER_GRP_NAME)[0]
 
         # add attrs
-        for attr in ["strength", "xVal", "yVal", "zVal", "falloff", "speed", "offset", "delay"
-                     # "parameter_X", "offsetX", "ampX", "delayX", "rdmX", "falloffX",
-                     # "parameter_Y", "offsetY", "ampY", "delayY", "rdmY", "falloffY",
-                     # "parameter_Z", "offsetZ", "ampZ", "delayZ", "rdmZ", "falloffZ"
+        for attr in ["Sine_All", "strength",
+                     # "xVal", "yVal", "zVal", "falloff", "speed", "offset", "delay",
+                     "parameter_X", "ampX", "speedX", "offsetX", "delayX", "rdmX", "falloffX",
+                     "parameter_Y", "ampY", "speedY", "offsetY", "delayY", "rdmY", "falloffY",
+                     "parameter_Z", "ampZ", "speedZ", "offsetZ", "delayZ", "rdmZ", "falloffZ"
                      ]:
-            if attr in ["strength", "speed", "falloff"]:
-                pm.addAttr(masterCC, ln=attr, at='double', smn=0, smx=10, keyable=True)
+            if attr == "strength":
+                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
+                masterCC.attr(attr).set(10)
+            elif attr.startswith("par") or attr == "Sine_All":
+                pm.addAttr(masterCC, ln=attr, at='enum', en="----------:", keyable=True)
+            elif attr.startswith("amp"):
+                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
+            elif attr.startswith("fall"):
+                pm.addAttr(masterCC, ln=attr, at='double', dv=0, smn=0, smx=10, keyable=True)
             else:
-                pm.addAttr(masterCC, ln=attr, at='double', smn=-10, smx=10, keyable=True)
-
-        # if attr.startswith("par"):
-        #     pm.addAttr(masterCC, ln=attr, at='enum', en="----------:", keyable=True)
-        # elif attr.startswith("del"):
-        #     pm.addAttr(masterCC, ln=attr, at='double', dv=1, keyable=True)
-        # elif attr.startswith("rdm"):
-        #     pm.addAttr(masterCC, ln=attr, at='double', dv=100, keyable=True)
-        # else:
-        #     pm.addAttr(masterCC, ln=attr, at='double', keyable=True)
+                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
 
         # lock attrs
         lock_attrs(self.element_grp)
         lock_attrs(self.master_grp)
         self.master_ctl = masterCC
 
-    def set_exp(self):
-        for fk_setup in self.fk_setups:
-            elements = fk_setup.ctls_fk
-            self._set_exp(self.master_ctl, elements)
+    def create_content(self, use_ribbon):
+        # # FK setup
+        for index in self.slaves:
+            fk_setup = FKSetup(slaves=self.slaves[index],
+                               matrices=self.matrices[index],
+                               config=self.config,
+                               index=index,
+                               parent=self.element_grp)
+            self.fk_setups.append(fk_setup)
+            # spline IK setup
+            # for index in self.slaves:
+            ik_setup = SplineIKSetup(slaves=fk_setup.jnt_offset,
+                                     matrices=self.matrices[index],
+                                     config=self.config,
+                                     index=index,
+                                     parent=self.element_grp)
+            self.ik_setups.append(ik_setup)
+            if use_ribbon:
+                ribbon_setup = RibbonSetup(slaves_count=len(fk_setup.jnt_offset),
+                                           config=self.config,
+                                           index=index,
+                                           fk_setup=fk_setup
+                                           )
+                self.ribbon_setups.append(ribbon_setup)
+
+    def set_exp(self, use_ribbon):
+        if not use_ribbon:
+            for chain_index, fk_setup in enumerate(self.fk_setups):
+                elements = fk_setup.ctls_fk
+                self._set_exp2(self.master_ctl, elements, chain_index)
 
     @staticmethod
     def _set_exp(masterCtl, elements):
         joint_count = len(elements)
 
         EXP = """
-        float $xVal = {_masterName}.xVal * 0.1;
-        float $yVal = {_masterName}.yVal * 0.1;
-        float $zVal = {_masterName}.zVal * 0.1;
-        float $falloff = {_masterName}.falloff * ({_joint_count}-1) * 0.1;  
-        float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) * (($falloff / 5) + 1);
-        float $freq = {_masterName}.speed * 0.1 ;
-        float $delay = {_masterName}.delay * -5;
-        float $off = {_masterName}.offset; \n
-        """.format(_masterName=masterCtl.name(), _joint_count=joint_count)
+            float $xVal = {_masterName}.xVal * 0.1;
+            float $yVal = {_masterName}.yVal * 0.1;
+            float $zVal = {_masterName}.zVal * 0.1;
+            float $falloff = {_masterName}.falloff * ({_joint_count}) * 0.1;  
+            float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) * (($falloff / 5) + 1);
+            float $freq = {_masterName}.speed * 0.1 * {_tau} ;
+            float $delay = {_masterName}.delay * -5;
+            float $off = {_masterName}.offset; \n
+            """.format(_masterName=masterCtl.name(), _joint_count=joint_count, _tau=tau)
 
-        elements.reverse()
         for index, item in enumerate(elements):
             if isinstance(item, str):
                 try:
@@ -398,21 +529,21 @@ class SineSetup:
                     return pm.warning(item, " is not valid")
 
             EXP += """
-            {_item}.rotateZ = 
-            sin( time * $freq * 3.141592653589793 * 2 
-            + $off 
-            + $delay 
-            * ({_index} + 1 - clamp(0,{_index},$falloff)) / ({_joint_count} * 2))      
-            // * $totalAmp 
-            * 10
-            * ({_index} + 1 - clamp(0,{_index},$falloff)) / ({_joint_count} * 2)      
-            * (1.0 - ({_index} + 1) / ({_joint_count} * 2))                               
-            * $zVal; \n
-            """.format(_item=item,
-                       _index=index,
-                       # _joint_count=float(joint_count * 2),
-                       _joint_count=float(joint_count),
-                       )
+                {_item}.rotateZ = 
+                sin ( 
+                    time * $freq
+                    + $off 
+                    + $delay 
+                    * ({_index} - clamp(0,{_index},$falloff)) / ({_joint_count} * 2.0) 
+                    )   
+                * $totalAmp 
+                * ({_index} - clamp(0,{_index},$falloff)) / ({_joint_count} * 2.0)      
+                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
+                * $zVal; \n
+                """.format(_item=item,
+                           _index=index + 1,
+                           _joint_count=float(joint_count),
+                           )
             pm.delete(item, expressions=1)
         pm.expression(s=EXP,
                       ae=1, uc='all',
@@ -420,8 +551,91 @@ class SineSetup:
                       n=(elements[0] + "_exp"))
         pm.setAttr(masterCtl.speed, 10)
         pm.setAttr(masterCtl.zVal, 5)
-# （（sin(time *$freq + $off + $delay * ((jointAdj - clamp(0, jointNo,$falloff)) - 1) / (jointTotal - 1)) * $totalAmp * (
-# (jointAdj - clamp(0, jointNo, $falloff)) - 1) / (jointTotal - 1) * (1.0 - (2 / jointTotal))) * $xVal);
-#
-# （（sin(time *$freq + $off + $delay * ((2 - clamp(0, 1,$falloff)) - 1) / (34 - 1)) * $totalAmp * (
-# (jointAdj - clamp(0, jointNo, $falloff)) - 1) / (34 - 1) * (1.0 - (2 / 34))) * $xVal);
+
+    @staticmethod
+    def _set_exp2(masterCtl, elements, chain_index):
+        joint_count = len(elements)
+
+        EXP = """
+            float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) ;
+            // -----------------------------------------------------------------------;
+            float $falloffX = {_masterName}.falloffX * ({_joint_count}) * 0.1;  
+            float $xVal = {_masterName}.ampX * 0.1 * (($falloffX / 5) + 1);
+            float $freqX = {_masterName}.speedX * 0.1 * {_tau} ;
+            float $delayX = {_masterName}.delayX * -5;
+            float $offX = {_masterName}.offsetX;
+            float $rdmX = {_masterName}.rdmX * noise(0.1 * {_masterName}.rdmX + {_chain_index});
+            // -----------------------------------------------------------------------;
+            float $falloffY = {_masterName}.falloffY * ({_joint_count}) * 0.1;  
+            float $yVal = {_masterName}.ampY * 0.1* (($falloffY / 5) + 1);
+            float $freqY = {_masterName}.speedY * 0.1 * {_tau} ;
+            float $delayY = {_masterName}.delayY * -5;
+            float $offY = {_masterName}.offsetY;
+            float $rdmY = {_masterName}.rdmY * noise(0.1 * {_masterName}.rdmY + {_chain_index});
+            // -----------------------------------------------------------------------;
+            float $falloffZ = {_masterName}.falloffZ * ({_joint_count}) * 0.1;  
+            float $zVal = {_masterName}.ampZ * 0.1* (($falloffZ / 5) + 1);
+            float $freqZ = {_masterName}.speedZ * 0.1 * {_tau} ;
+            float $delayZ = {_masterName}.delayZ * -5;
+            float $offZ = {_masterName}.offsetZ;
+            float $rdmZ= {_masterName}.rdmZ * noise(0.1 * {_masterName}.rdmZ + {_chain_index});\n
+            """.format(_masterName=masterCtl.name(), _joint_count=joint_count, _tau=tau, _chain_index=chain_index)
+
+        for index, item in enumerate(elements):
+            if isinstance(item, str):
+                try:
+                    pm.PyNode(item)
+                except:
+                    return pm.warning(item, " is not valid")
+
+            EXP += """
+             // -----------------------------------------------------------------------\n
+             {_item}.rotateX = 
+                sin ( 
+                    time * $freqX 
+                    + $rdmX
+                    + $offX
+                    + $delayX
+                    * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0) 
+                    )   
+                * $totalAmp 
+                * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0)      
+                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
+                * $xVal;
+             // -----------------------------------------------------------------------\n
+             {_item}.rotateY = 
+                sin ( 
+                    time * $freqY
+                    + $rdmY
+                    + $offY
+                    + $delayY
+                    * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0) 
+                    )   
+                * $totalAmp 
+                * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0)      
+                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
+                * $yVal;
+            // -----------------------------------------------------------------------\n
+            {_item}.rotateZ = 
+                sin ( 
+                    time * $freqZ 
+                    + $rdmZ
+                    + $offZ 
+                    + $delayZ 
+                    * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0) 
+                    )   
+                * $totalAmp 
+                * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0)      
+                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
+                * $zVal; \n
+                """.format(_item=item,
+                           _index=index + 1,
+                           _joint_count=float(joint_count),
+                           )
+            pm.delete(item, expressions=1)
+        pm.expression(s=EXP,
+                      ae=1, uc='all',
+                      o="",
+                      n=(elements[0] + "_exp"))
+        # pm.setAttr(masterCtl.speed, 10)
+        # pm.setAttr(masterCtl.zVal, 5)
