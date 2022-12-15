@@ -13,7 +13,7 @@ from ..ui.widgets.py_push_button import PyPushButton
 from .widgets.py_icon_button import PyIconButton
 from .widgets.py_line_edit import PyLineEdit
 from ..qt_core import *
-from ..operation import SineSetup
+from ..operation import SineSetupMain
 
 _dir_name = os.path.dirname(__file__)
 icon_dir = os.path.join(_dir_name, "images", "svg_icons")
@@ -172,7 +172,7 @@ class SineUI(MainWindow):
 
         self.settings_dialog.show()
         if self.settings_dialog.exec_() == QtWidgets.QDialog.Accepted:
-            master = SineSetup(elements, matrices, self.settings_dialog.config)
+            master = SineSetupMain(elements, matrices, self.settings_dialog.config)
             self.master_lw.addItem(master.config["name"])
 
     def make_exp(self):

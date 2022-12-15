@@ -1,8 +1,8 @@
 {
     "app_name": "Sine Tool",
     "version" : "v0.0.1",
-    "copyright" : "By: Wanderson M. Pimenta",
-    "year" : 2021,
+    "copyright" : "By: Ruixin He, UI: Wanderson M. Pimenta, ",
+    "year" : 2022,
     "theme_name" : "default",
     "custom_title_bar": true,
     "startup_size": [

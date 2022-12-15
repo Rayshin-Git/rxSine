@@ -1,9 +1,32 @@
 from functools import wraps
 
+import maya.OpenMaya as om
 import pymel.core as pm
 from maya import cmds
-import maya.OpenMaya as om
 from pymel.core import datatypes
+
+
+def getFrameRate():
+    """
+    Return an int of the current frame rate
+    """
+    currentUnit = pm.currentUnit(query=True, time=True)
+    if currentUnit == 'film':
+        return 24
+    elif currentUnit == 'show':
+        return 48
+    elif currentUnit == 'pal':
+        return 25
+    elif currentUnit == 'ntsc':
+        return 30
+    elif currentUnit == 'palf':
+        return 50
+    elif currentUnit == 'ntscf':
+        return 60
+    elif 'fps' in currentUnit:
+        return int(currentUnit.substitute('fps', ''))
+    else:
+        return pm.warning("failed to get scene frame rate")
 
 
 def getWalkTag(node):

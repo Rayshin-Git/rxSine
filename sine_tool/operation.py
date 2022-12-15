@@ -1,15 +1,11 @@
 from math import tau
 
 import pymel.core as pm
-from maya import cmds
-from mgear.rigbits import connectWorldTransform, addJnt
-from pymel.core import datatypes
-from pymel.core.datatypes import Point, Vector, Matrix
-from mgear.core.applyop import gear_matrix_cns
 from mgear.core.node import add_controller_tag
+from mgear.core.transform import getTransformFromPos
+from pymel.core.datatypes import Vector
 
-from .helper import addNPO, addJoint, create_ctl, addCnstJnt, \
-    lock_attrs, create_group, get_average_distance_on_curve, \
+from .helper import addNPO, addJoint, create_ctl, lock_attrs, create_group, get_average_distance_on_curve, \
     get_defaultMatrix, addParentJnt, getWalkTag
 
 
@@ -95,22 +91,6 @@ class SplineIKSetup:
                     elementGrp = pm.PyNode(base_name)
                     pm.parent(self.ik_grp, elementGrp)
 
-            # if i != len(self.slaves) - 1:
-            #     _length += (self.jnt_ik[i].getTranslation(ws=1) - self.jnt_ik[i - 1].getTranslation(ws=1)).length()
-
-            """ backup
-            # # add last joint tip
-            # else:
-            #     _length += (self.jnt_ik[i].getTranslation() - self.jnt_ik[i - 1].getTranslation()).length()
-            #     last_joint = pm.PyNode(self.jnt_ik[-1])
-            #     average_length = _length / (len(self.slaves) - 2.0)
-            #     tip = pm.duplicate(last_joint, n=last_joint.name().replace(last_joint.namespace(), '') + '_TIP')[0]
-            #     pm.parent(tip, last_joint)
-            #     tip.setTranslation(last_joint.getTranslation(space='object') * average_length, space='object')
-            #     tip.radius.set(last_joint.radius.get())
-            #     self.jnt_ik.append(tip)
-            """
-
     def create_spline_IK(self):
         start, end = self.jnt_ik[0], self.jnt_ik[-1]
         handle, effector, curve = pm.ikHandle(n=self.IK_chain_Grp_name + "_handle",
@@ -148,13 +128,9 @@ class SplineIKSetup:
 
     def connect_slave(self):
         for ik, fk in zip(self.jnt_ik, self.slaves):
-            # gear_matrix_cns(ik, fk)
-            # connectWorldTransform(ik, fk)
-            # pm.connectAttr(ik.rotate, fk.rotate)
             ik.rotate >> fk.rotate
 
 
-#
 class FKSetup:
     """
     Sine FK constructions for single chain
@@ -279,15 +255,224 @@ class FKSetup:
             pm.parentConstraint(fk, slave, mo=0, n=pm.PyNode(slave).name() + "_tempCns")
 
 
-class RibbonSetup:
-    """
-        Sine Ribbon constructions for single chain
+class SineSetupMain:
+    def __init__(self, slaves, matrices, config):
         """
+        init with the data passed in
+        :param config->dict: {
+            name->string,
+            fk_size->float,
+            ik_size->float,
+            ik_count->int,
+            use_index->bool|int,
+            color:rgb 0~1 -> (float,float,float)}
+        """
+        # attrs
+        self.ribbon_setups = []
+        self.fk_setups = []
+        self.ik_setups = []
+        self.element_grp = None
+        self.master_grp = None
+        self.master_ctl = None
+
+        self.slaves = slaves
+        self.matrices = matrices
+        self.config = config
+
+        # steps
+        USE_RIBBON = False  # USE_RIBBON method is temporarily discarded
+        self.create_master()
+        self.create_content(USE_RIBBON)
+        self.set_exp(USE_RIBBON)
+
+    def create_master(self):
+        size = 1.5 * self.config["ik_size"]
+        element_grp_name = ELEMENT_Grp.format(_name=self.config["name"])
+
+        # CREATE THE GLOBAL CONTROLLER---
+        # # get the average position of root ctrls
+        root_position = Vector(0, 0, 0)
+        for i in range(len(self.slaves)):
+            chain_root = pm.PyNode(self.slaves[i][0])
+            root_position += chain_root.getTranslation(ws=1)
+        root_position = root_position / len(self.slaves)
+        root_matrix = getTransformFromPos(root_position)
+
+        masterCC = create_ctl(parent=None,
+                              name=element_grp_name + "_MCtl",
+                              m=root_matrix,
+                              color=self.config["color"],
+                              icon="sphere",
+                              w=size
+                              )
+        pm.controller(masterCC)
+        element_grp = addNPO(masterCC, rename=element_grp_name)[0]
+        self.element_grp = element_grp
+        if pm.objExists(MASTER_GRP_NAME):
+            self.master_grp = pm.PyNode(MASTER_GRP_NAME)
+            pm.parent(self.element_grp, self.master_grp)
+        else:
+            self.master_grp = addNPO(self.element_grp, rename=MASTER_GRP_NAME)[0]
+
+        # add attrs
+        for attr in ["Sine_All", "strength",
+                     # "xVal", "yVal", "zVal", "falloff", "speed", "offset", "delay",
+                     "parameter_X", "ampX", "speedX", "offsetX", "delayX", "rdmX", "falloffX",
+                     "parameter_Y", "ampY", "speedY", "offsetY", "delayY", "rdmY", "falloffY",
+                     "parameter_Z", "ampZ", "speedZ", "offsetZ", "delayZ", "rdmZ", "falloffZ"
+                     ]:
+            if attr == "strength":
+                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
+                masterCC.attr(attr).set(10)
+            elif attr.startswith("par") or attr == "Sine_All":
+                pm.addAttr(masterCC, ln=attr, at='enum', en="----------:", keyable=True)
+            elif attr.startswith("amp"):
+                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
+            elif attr.startswith("fall"):
+                pm.addAttr(masterCC, ln=attr, at='double', dv=0, smn=0, smx=10, keyable=True)
+            else:
+                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
+
+        # lock attrs
+        lock_attrs(self.element_grp)
+        lock_attrs(self.master_grp)
+        self.master_ctl = masterCC
+
+    def create_content(self, use_ribbon):
+        # # FK setup
+        for index in self.slaves:
+            fk_setup = FKSetup(slaves=self.slaves[index],
+                               matrices=self.matrices[index],
+                               config=self.config,
+                               index=index,
+                               parent=self.element_grp)
+            self.fk_setups.append(fk_setup)
+            # spline IK setup
+            # for index in self.slaves:
+            ik_setup = SplineIKSetup(slaves=fk_setup.jnt_offset,
+                                     matrices=self.matrices[index],
+                                     config=self.config,
+                                     index=index,
+                                     parent=self.element_grp)
+            self.ik_setups.append(ik_setup)
+            if use_ribbon:
+                ribbon_setup = RibbonSetup(slaves_count=len(fk_setup.jnt_offset),
+                                           config=self.config,
+                                           index=index,
+                                           fk_setup=fk_setup
+                                           )
+                self.ribbon_setups.append(ribbon_setup)
+
+    def set_exp(self, use_ribbon):
+        if not use_ribbon:
+            for chain_index, fk_setup in enumerate(self.fk_setups):
+                elements = fk_setup.ctls_fk
+                self._set_exp(self.master_ctl, elements, chain_index)
+
+    @staticmethod
+    def _set_exp(masterCtl, elements, chain_index):
+        joint_count = len(elements)
+
+        EXP = """
+            float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) ;
+            // -----------------------------------------------------------------------;
+            float $falloffX = {_masterName}.falloffX * ({_joint_count}) * 0.1;  
+            float $xVal = {_masterName}.ampX * 0.1 * (($falloffX / 5) + 1);
+            float $freqX = {_masterName}.speedX * 0.1  * {_tau} ;
+            float $delayX = {_masterName}.delayX * -5;
+            float $offX = {_masterName}.offsetX;
+            float $rdmX = {_masterName}.rdmX * noise(0.1 * {_masterName}.rdmX + {_chain_index});
+            // -----------------------------------------------------------------------;
+            float $falloffY = {_masterName}.falloffY * ({_joint_count}) * 0.1;  
+            float $yVal = {_masterName}.ampY * 0.1* (($falloffY / 5) + 1);
+            float $freqY = {_masterName}.speedY * 0.1  * {_tau} ;
+            float $delayY = {_masterName}.delayY * -5;
+            float $offY = {_masterName}.offsetY;
+            float $rdmY = {_masterName}.rdmY * noise(0.1 * {_masterName}.rdmY + {_chain_index});
+            // -----------------------------------------------------------------------;
+            float $falloffZ = {_masterName}.falloffZ * ({_joint_count}) * 0.1;  
+            float $zVal = {_masterName}.ampZ * 0.1* (($falloffZ / 5) + 1);
+            float $freqZ = {_masterName}.speedZ * 0.1 * {_tau} ;
+            float $delayZ = {_masterName}.delayZ * -5;
+            float $offZ = {_masterName}.offsetZ;
+            float $rdmZ= {_masterName}.rdmZ * noise(0.1 * {_masterName}.rdmZ + {_chain_index});\n
+            """.format(_masterName=masterCtl.name(), _joint_count=joint_count, _tau=tau, _chain_index=chain_index)
+
+        for index, item in enumerate(elements):
+            if isinstance(item, str):
+                try:
+                    pm.PyNode(item)
+                except:
+                    return pm.warning(item, " is not valid")
+
+            EXP += """
+             // -----------------------------------------------------------------------\n
+             {_item}.rotateX = 
+                sin ( 
+                    time * $freqX 
+                    + $rdmX
+                    + $offX
+                    + $delayX
+                    * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0) 
+                    )   
+                * $totalAmp 
+                * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0)      
+                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
+                * $xVal;
+             // -----------------------------------------------------------------------\n
+             {_item}.rotateY = 
+                sin ( 
+                    time * $freqY
+                    + $rdmY
+                    + $offY
+                    + $delayY
+                    * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0) 
+                    )   
+                * $totalAmp 
+                * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0)      
+                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
+                * $yVal;
+            // -----------------------------------------------------------------------\n
+            {_item}.rotateZ = 
+                sin ( 
+                    time * $freqZ 
+                    + $rdmZ
+                    + $offZ 
+                    + $delayZ 
+                    * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0) 
+                    )   
+                * $totalAmp 
+                * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0)      
+                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
+                * $zVal; \n
+                """.format(_item=item,
+                           _index=index + 1,
+                           _joint_count=float(joint_count),
+                           )
+            pm.delete(item, expressions=1)
+        pm.expression(s=EXP,
+                      ae=1, uc='all',
+                      o="",
+                      n=(elements[0] + "_exp"))
+
+
+"""
+Temporarily Discarded Methods
+(Just in case we need to add it back if we need other animation methods, such as noise or other deformer-driven things)
+-------------------------------------
+
+-------------------------------------
+class to build a ribbon for applying deformers
+-------------------------------------
+class RibbonSetup:
+    " " "
+        Sine Ribbon constructions for single chain
+    " " "
 
     def __init__(self, slaves_count, config, index, fk_setup=None):
-        """
+        " " "
         getting the attributes from parent SineSetup for generate the Spline IK setup
-        """
+        " " "
         # attrs
         self.name = config["name"]
         self.slaves_count = slaves_count
@@ -398,129 +583,14 @@ class RibbonSetup:
         # Return the deformer
         return nonLinDef
 
-
-class SineSetup:
-    def __init__(self, slaves, matrices, config):
-        """
-        init with the data passed in
-        :param config->dict: {
-            name->string,
-            fk_size->float,
-            ik_size->float,
-            ik_count->int,
-            use_index->bool|int,
-            color:rgb 0~1 -> (float,float,float)}
-        """
-        # attrs
-        self.ribbon_setups = []
-        self.fk_setups = []
-        self.ik_setups = []
-        self.element_grp = None
-        self.master_grp = None
-        self.master_ctl = None
-
-        self.slaves = slaves
-        self.matrices = matrices
-        self.config = config
-
-        # steps
-        USE_RIBBON = False
-        self.create_master()
-        self.create_content(USE_RIBBON)
-        self.set_exp(USE_RIBBON)
-
-    def create_master(self):
-        size = 0.5 * self.config["ik_size"]
-        element_grp_name = ELEMENT_Grp.format(_name=self.config["name"])
-
-        # CREATE THE GLOBAL CONTROLLER---
-        root_matrix = None
-        for i in range(len(self.slaves)):
-            chain_root = pm.PyNode(self.slaves[i][0])
-            this_matrix = chain_root.getMatrix(ws=1)
-            if root_matrix is None:
-                root_matrix = this_matrix
-            else:
-                root_matrix += this_matrix
-            root_matrix = root_matrix / (i + 1)
-
-        masterCC = create_ctl(parent=None,
-                              name=element_grp_name + "_MCtl",
-                              m=root_matrix,
-                              color=self.config["color"],
-                              icon="sphere",
-                              w=size
-                              # **kwargs
-                              )
-        pm.controller(masterCC)
-        element_grp = addNPO(masterCC, rename=element_grp_name)[0]
-        self.element_grp = element_grp
-        if pm.objExists(MASTER_GRP_NAME):
-            self.master_grp = pm.PyNode(MASTER_GRP_NAME)
-            pm.parent(self.element_grp, self.master_grp)
-        else:
-            self.master_grp = addNPO(self.element_grp, rename=MASTER_GRP_NAME)[0]
-
-        # add attrs
-        for attr in ["Sine_All", "strength",
-                     # "xVal", "yVal", "zVal", "falloff", "speed", "offset", "delay",
-                     "parameter_X", "ampX", "speedX", "offsetX", "delayX", "rdmX", "falloffX",
-                     "parameter_Y", "ampY", "speedY", "offsetY", "delayY", "rdmY", "falloffY",
-                     "parameter_Z", "ampZ", "speedZ", "offsetZ", "delayZ", "rdmZ", "falloffZ"
-                     ]:
-            if attr == "strength":
-                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
-                masterCC.attr(attr).set(10)
-            elif attr.startswith("par") or attr == "Sine_All":
-                pm.addAttr(masterCC, ln=attr, at='enum', en="----------:", keyable=True)
-            elif attr.startswith("amp"):
-                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
-            elif attr.startswith("fall"):
-                pm.addAttr(masterCC, ln=attr, at='double', dv=0, smn=0, smx=10, keyable=True)
-            else:
-                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
-
-        # lock attrs
-        lock_attrs(self.element_grp)
-        lock_attrs(self.master_grp)
-        self.master_ctl = masterCC
-
-    def create_content(self, use_ribbon):
-        # # FK setup
-        for index in self.slaves:
-            fk_setup = FKSetup(slaves=self.slaves[index],
-                               matrices=self.matrices[index],
-                               config=self.config,
-                               index=index,
-                               parent=self.element_grp)
-            self.fk_setups.append(fk_setup)
-            # spline IK setup
-            # for index in self.slaves:
-            ik_setup = SplineIKSetup(slaves=fk_setup.jnt_offset,
-                                     matrices=self.matrices[index],
-                                     config=self.config,
-                                     index=index,
-                                     parent=self.element_grp)
-            self.ik_setups.append(ik_setup)
-            if use_ribbon:
-                ribbon_setup = RibbonSetup(slaves_count=len(fk_setup.jnt_offset),
-                                           config=self.config,
-                                           index=index,
-                                           fk_setup=fk_setup
-                                           )
-                self.ribbon_setups.append(ribbon_setup)
-
-    def set_exp(self, use_ribbon):
-        if not use_ribbon:
-            for chain_index, fk_setup in enumerate(self.fk_setups):
-                elements = fk_setup.ctls_fk
-                self._set_exp2(self.master_ctl, elements, chain_index)
-
+-------------------------------------
+good old expression for single chain with 1 axis
+-------------------------------------
     @staticmethod
     def _set_exp(masterCtl, elements):
         joint_count = len(elements)
 
-        EXP = """
+        EXP = " " "
             float $xVal = {_masterName}.xVal * 0.1;
             float $yVal = {_masterName}.yVal * 0.1;
             float $zVal = {_masterName}.zVal * 0.1;
@@ -529,7 +599,7 @@ class SineSetup:
             float $freq = {_masterName}.speed * 0.1 * {_tau} ;
             float $delay = {_masterName}.delay * -5;
             float $off = {_masterName}.offset; \n
-            """.format(_masterName=masterCtl.name(), _joint_count=joint_count, _tau=tau)
+            " " ".format(_masterName=masterCtl.name(), _joint_count=joint_count, _tau=tau)
 
         for index, item in enumerate(elements):
             if isinstance(item, str):
@@ -538,7 +608,7 @@ class SineSetup:
                 except:
                     return pm.warning(item, " is not valid")
 
-            EXP += """
+            EXP += " " "
                 {_item}.rotateZ = 
                 sin ( 
                     time * $freq
@@ -550,7 +620,7 @@ class SineSetup:
                 * ({_index} - clamp(0,{_index},$falloff)) / ({_joint_count} * 2.0)      
                 * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
                 * $zVal; \n
-                """.format(_item=item,
+                " " ".format(_item=item,
                            _index=index + 1,
                            _joint_count=float(joint_count),
                            )
@@ -562,90 +632,4 @@ class SineSetup:
         pm.setAttr(masterCtl.speed, 10)
         pm.setAttr(masterCtl.zVal, 5)
 
-    @staticmethod
-    def _set_exp2(masterCtl, elements, chain_index):
-        joint_count = len(elements)
-
-        EXP = """
-            float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) ;
-            // -----------------------------------------------------------------------;
-            float $falloffX = {_masterName}.falloffX * ({_joint_count}) * 0.1;  
-            float $xVal = {_masterName}.ampX * 0.1 * (($falloffX / 5) + 1);
-            float $freqX = {_masterName}.speedX * 0.1  * {_tau} ;
-            float $delayX = {_masterName}.delayX * -5;
-            float $offX = {_masterName}.offsetX;
-            float $rdmX = {_masterName}.rdmX * noise(0.1 * {_masterName}.rdmX + {_chain_index});
-            // -----------------------------------------------------------------------;
-            float $falloffY = {_masterName}.falloffY * ({_joint_count}) * 0.1;  
-            float $yVal = {_masterName}.ampY * 0.1* (($falloffY / 5) + 1);
-            float $freqY = {_masterName}.speedY * 0.1  * {_tau} ;
-            float $delayY = {_masterName}.delayY * -5;
-            float $offY = {_masterName}.offsetY;
-            float $rdmY = {_masterName}.rdmY * noise(0.1 * {_masterName}.rdmY + {_chain_index});
-            // -----------------------------------------------------------------------;
-            float $falloffZ = {_masterName}.falloffZ * ({_joint_count}) * 0.1;  
-            float $zVal = {_masterName}.ampZ * 0.1* (($falloffZ / 5) + 1);
-            float $freqZ = {_masterName}.speedZ * 0.1 * {_tau} ;
-            float $delayZ = {_masterName}.delayZ * -5;
-            float $offZ = {_masterName}.offsetZ;
-            float $rdmZ= {_masterName}.rdmZ * noise(0.1 * {_masterName}.rdmZ + {_chain_index});\n
-            """.format(_masterName=masterCtl.name(), _joint_count=joint_count, _tau=tau, _chain_index=chain_index)
-
-        for index, item in enumerate(elements):
-            if isinstance(item, str):
-                try:
-                    pm.PyNode(item)
-                except:
-                    return pm.warning(item, " is not valid")
-
-            EXP += """
-             // -----------------------------------------------------------------------\n
-             {_item}.rotateX = 
-                sin ( 
-                    time * $freqX 
-                    + $rdmX
-                    + $offX
-                    + $delayX
-                    * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0) 
-                    )   
-                * $totalAmp 
-                * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0)      
-                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
-                * $xVal;
-             // -----------------------------------------------------------------------\n
-             {_item}.rotateY = 
-                sin ( 
-                    time * $freqY
-                    + $rdmY
-                    + $offY
-                    + $delayY
-                    * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0) 
-                    )   
-                * $totalAmp 
-                * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0)      
-                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
-                * $yVal;
-            // -----------------------------------------------------------------------\n
-            {_item}.rotateZ = 
-                sin ( 
-                    time * $freqZ 
-                    + $rdmZ
-                    + $offZ 
-                    + $delayZ 
-                    * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0) 
-                    )   
-                * $totalAmp 
-                * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0)      
-                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
-                * $zVal; \n
-                """.format(_item=item,
-                           _index=index + 1,
-                           _joint_count=float(joint_count),
-                           )
-            pm.delete(item, expressions=1)
-        pm.expression(s=EXP,
-                      ae=1, uc='all',
-                      o="",
-                      n=(elements[0] + "_exp"))
-        # pm.setAttr(masterCtl.speed, 10)
-        # pm.setAttr(masterCtl.zVal, 5)
+"""
