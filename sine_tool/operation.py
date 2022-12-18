@@ -8,7 +8,7 @@ from mgear.core.transform import getTransformFromPos
 from pymel.core.datatypes import Vector
 
 from .helper import addNPO, addJoint, create_ctl, lock_attrs, create_group, get_average_distance_on_curve, \
-    get_defaultMatrix, addParentJnt, getWalkTag
+    get_defaultMatrix, addParentJnt, getWalkTag, getFrameRate
 
 
 def alphabet_index(index):
@@ -390,7 +390,6 @@ class SineSetupMain:
     @staticmethod
     def _set_exp(masterCtl, elements, chain_index):
         joint_count = len(elements)
-
         EXP = """
             float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) ;
             // -----------------------------------------------------------------------;
@@ -398,23 +397,27 @@ class SineSetupMain:
             float $xVal = {_masterName}.ampX * 0.1 * (($falloffX / 5) + 1);
             float $freqX = {_masterName}.speedX * 0.1  * {_tau} ;
             float $delayX = {_masterName}.delayX * -5;
-            float $offX = {_masterName}.offsetX;
-            float $rdmX = {_masterName}.rdmX * noise(0.01 * {_masterName}.rdmX + {_chain_index});
+            float $offX = {_masterName}.offsetX / {_frame_rate} * $freqX;
+            float $rdmX = {_masterName}.rdmX * noise({_masterName}.rdmX + {_chain_index});
             // -----------------------------------------------------------------------;
             float $falloffY = {_masterName}.falloffY * ({_joint_count}) * 0.1;  
             float $yVal = {_masterName}.ampY * 0.1* (($falloffY / 5) + 1);
             float $freqY = {_masterName}.speedY * 0.1  * {_tau} ;
             float $delayY = {_masterName}.delayY * -5;
-            float $offY = {_masterName}.offsetY;
-            float $rdmY = {_masterName}.rdmY * noise(0.01 * {_masterName}.rdmY + {_chain_index});
+            float $offY = {_masterName}.offsetY / {_frame_rate} * $freqY;
+            float $rdmY = {_masterName}.rdmY * noise({_masterName}.rdmY + {_chain_index});
             // -----------------------------------------------------------------------;
             float $falloffZ = {_masterName}.falloffZ * ({_joint_count}) * 0.1;  
             float $zVal = {_masterName}.ampZ * 0.1* (($falloffZ / 5) + 1);
             float $freqZ = {_masterName}.speedZ * 0.1 * {_tau} ;
             float $delayZ = {_masterName}.delayZ * -5;
-            float $offZ = {_masterName}.offsetZ;
-            float $rdmZ= {_masterName}.rdmZ * noise(0.01 * {_masterName}.rdmZ + {_chain_index});\n
-            """.format(_masterName=masterCtl.name(), _joint_count=joint_count, _tau=tau, _chain_index=chain_index)
+            float $offZ = {_masterName}.offsetZ / {_frame_rate} * $freqZ;
+            float $rdmZ= {_masterName}.rdmZ * noise({_masterName}.rdmZ + {_chain_index});\n
+            """.format(_masterName=masterCtl.name(),
+                       _joint_count=joint_count,
+                       _tau=tau,
+                       _frame_rate=getFrameRate(),
+                       _chain_index=chain_index)
 
         for index, item in enumerate(elements):
             if isinstance(item, str):
