@@ -2,10 +2,12 @@ import os
 
 app_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 
+
 class Functions:
 
     # SET SVG ICON
     # ///////////////////////////////////////////////////////////////
+    @staticmethod
     def set_svg_icon(icon_name):
         folder = "ui/images/svg_icons/"
         path = os.path.join(app_path, folder)
@@ -14,6 +16,7 @@ class Functions:
 
     # SET SVG IMAGE
     # ///////////////////////////////////////////////////////////////
+    @staticmethod
     def set_svg_image(icon_name):
         folder = "ui/images/svg_images/"
         path = os.path.join(app_path, folder)
@@ -22,6 +25,7 @@ class Functions:
 
     # SET IMAGE
     # ///////////////////////////////////////////////////////////////
+    @staticmethod
     def set_image(image_name):
         folder = "ui/images/images/"
         path = os.path.join(app_path, folder)

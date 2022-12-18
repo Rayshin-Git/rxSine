@@ -1,3 +1,4 @@
+# coding=utf-8
 from PySide2 import QtWidgets, QtCore
 
 from ...ui.widgets.py_slider import PySlider
@@ -78,7 +79,7 @@ class FloatSliderGroup(QtWidgets.QHBoxLayout):
 
 class FlowLayout(QtWidgets.QLayout):
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super(FlowLayout, self).__init__(parent)
 
         if parent is not None:
             self.setContentsMargins(QtCore.QMargins(0, 0, 0, 0))

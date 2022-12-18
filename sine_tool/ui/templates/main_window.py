@@ -1,8 +1,8 @@
-from sine_tool.qt_core import *
-from sine_tool.ui.core.json_settings import Settings
-from sine_tool.ui.core.json_themes import Themes
-from sine_tool.ui.widgets.py_grips import PyGrips
-from sine_tool.ui.widgets.py_title_bar import PyTitleBar
+from ..core.json_settings import Settings
+from ..core.json_themes import Themes
+from ..widgets.py_grips import PyGrips
+from ..widgets.py_title_bar import PyTitleBar
+from ...qt_core import *
 
 app = maya_main_window()
 
@@ -237,9 +237,9 @@ class SubWindow(QtWidgets.QDialog):
 class MainWindow(SubWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
-        self.setup_grip()
+        self.setup_grip_custom()
 
-    def setup_grip(self):
+    def setup_grip_custom(self):
         # advanced grip sample
         self.hide_grips = True
         self.left_grip = PyGrips(self, "left", self.hide_grips)

@@ -97,6 +97,7 @@ QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
 scroll_bar_btn_color = "#3333"
 context_color = "#00ABE8"
 
+
 # PY PUSH BUTTON
 # ///////////////////////////////////////////////////////////////
 class PyListWidget(QtWidgets.QListWidget):
@@ -104,7 +105,7 @@ class PyListWidget(QtWidgets.QListWidget):
             self,
             parent=None,
     ):
-        super().__init__()
+        super(PyListWidget, self).__init__()
         themes = Themes()
         self.themes = themes.items
         # SET PARAMETRES

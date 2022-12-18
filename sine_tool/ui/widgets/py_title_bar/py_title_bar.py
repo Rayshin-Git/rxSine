@@ -1,20 +1,16 @@
-from ....qt_core import *
-
-# IMPORT FUNCTIONS
-# ///////////////////////////////////////////////////////////////
-from ....ui.core.functions import *
-
-# IMPORT SETTINGS
-# ///////////////////////////////////////////////////////////////
-from ....ui.core.json_settings import Settings
-
 # IMPORT DIV
 # ///////////////////////////////////////////////////////////////
 from .py_div import PyDiv
-
 # IMPORT BUTTON
 # ///////////////////////////////////////////////////////////////
 from .py_title_button import PyTitleButton
+from ....qt_core import *
+# IMPORT FUNCTIONS
+# ///////////////////////////////////////////////////////////////
+from ....ui.core.functions import *
+# IMPORT SETTINGS
+# ///////////////////////////////////////////////////////////////
+from ....ui.core.json_settings import Settings
 
 # GLOBALS
 # ///////////////////////////////////////////////////////////////
@@ -54,9 +50,9 @@ class PyTitleBar(QtWidgets.QWidget):
             font_family="Segoe UI",
             title_size=10,
             is_custom_title_bar=True,
-            default_btns=(0, 0, 1),
+            default_btns=(1, 1, 1),
     ):
-        super().__init__()
+        super(PyTitleBar, self).__init__()
 
         settings = Settings()
         self.settings = settings.items
@@ -86,7 +82,7 @@ class PyTitleBar(QtWidgets.QWidget):
         self.setup_ui()
 
         # ADD BG COLOR
-        self.bg.setStyleSheet(f"background-color: {bg_color}; border-radius: {radius}px;")
+        self.bg.setStyleSheet("background-color: {}; border-radius: {}px;".format(bg_color, radius))
 
         # SET LOGO AND WIDTH
         self.top_logo.setMinimumWidth(logo_width)
@@ -257,7 +253,7 @@ class PyTitleBar(QtWidgets.QWidget):
         # TITLE LABEL
         self.title_label = QtWidgets.QLabel()
         self.title_label.setAlignment(QtCore.Qt.AlignVCenter)
-        self.title_label.setStyleSheet(f'font: {self._title_size}pt "{self._font_family}"')
+        self.title_label.setStyleSheet('font: {}pt "{}"'.format(self._title_size, self._font_family))
         title_height = self.title_label.sizeHint().height()
 
         # LEFT FRAME WITH MOVE APP

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 import ast
 from functools import partial
 
@@ -124,7 +126,6 @@ class SineUI(MainWindow):
         self.left_top_btn.clicked.connect(self.add_source)
         self.left_top_btn2.clicked.connect(self.remove_source)
         self.left_btn.clicked.connect(self.add_master)
-        self.left_btn2.clicked.connect(self.make_exp)
 
     def add_source(self):
         sl = pm.ls(os=1, o=1)
@@ -135,8 +136,8 @@ class SineUI(MainWindow):
                 if i in self.source_checker:
                     text = ["object '{}' already assigned".format(i),
                             "オブジェクト '{}' はすでに割り当てられています".format(i)]
-                    return pm.warning()
-        text = str([i.name() for i in sl])
+                    return pm.warning(text)
+        text = str([str(i.name()) for i in sl])
         self.source_lw.addItem(text)
         [self.source_checker.append(i) for i in sl if i not in self.source_checker]
 
@@ -174,9 +175,6 @@ class SineUI(MainWindow):
         if self.settings_dialog.exec_() == QtWidgets.QDialog.Accepted:
             master = SineSetupMain(elements, matrices, self.settings_dialog.config)
             self.master_lw.addItem(master.config["name"])
-
-    def make_exp(self):
-        pass
 
     def closeEvent(self, event):
         super(MainWindow, self).closeEvent(event)
@@ -228,7 +226,8 @@ class SineSettingsDialog(SubWindow):
         # self.label2.setAlignment(QtCore.Qt.AlignCenter)
         # self.label2.setFont(font)
         self.line_edit = PyLineEdit(place_holder_text=text[_L])
-        self.line_edit.setValidator(QtGui.QRegExpValidator("^[a-zA-Z][a-zA-Z0-9_]*$"))
+        exp = QtCore.QRegExp("^[a-zA-Z][a-zA-Z0-9_]*$")
+        self.line_edit.setValidator(QtGui.QRegExpValidator(exp))
         text = ["Create", "作成"]
         self.confirm_btn = PyPushButton(text[_L])
         text = ["Cancel", "キャンセル"]
@@ -325,7 +324,6 @@ class SineSettingsDialog(SubWindow):
         self.color_visual_btn.setStyleSheet("background-color: {};".format(color.name()))
         self.raw_color_value = [i / 255.0 for i in color.getRgb()[:-1]]
         self.use_index = self.index_grp.current_index
-
 
     @property
     def config(self):

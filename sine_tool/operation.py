@@ -1,4 +1,6 @@
-from math import tau
+from math import pi
+
+tau = pi * 2
 
 import pymel.core as pm
 from mgear.core.node import add_controller_tag
@@ -124,7 +126,8 @@ class SplineIKSetup:
                            m=matrix,
                            vis=False)
             jnts.append(jnt)
-        pm.skinCluster(*jnts, self.curve, tsb=True, dr=2.0, n=self.curve.getShape().name() + "_skinCluster")
+        # pm.skinCluster(*jnts, self.curve, tsb=True, dr=2.0, n=self.curve.getShape().name() + "_skinCluster")
+        pm.skinCluster(jnts, self.curve, tsb=True, dr=2.0, n=self.curve.getShape().name() + "_skinCluster")
 
     def connect_slave(self):
         for ik, fk in zip(self.jnt_ik, self.slaves):
@@ -152,6 +155,7 @@ class FKSetup:
         self.fk_grp = None
         self.ctls_grp = None
         self.jnt_offset = []
+        self.jnt_exp = []
         self.jnt_fk = []
         self.ctls_fk = None
 
@@ -160,6 +164,7 @@ class FKSetup:
 
         # steps
         self.create_offset_joints()
+        self.create_expression_joints()
         self.create_base_joints()
         self.create_ctrls()
         self.connect_slave()
@@ -206,12 +211,23 @@ class FKSetup:
                 tip.radius.set(last_joint.radius.get())
                 self.jnt_offset.append(tip)
 
-    def create_base_joints(self):
-        for jntOffset in self.jnt_offset:
+    def create_expression_joints(self):
+        for jnt_o in self.jnt_offset:
             # general joints creation
-            jnt = addParentJnt(parent=jntOffset,
-                               name=jntOffset.shortName().replace("_offset_jnt", "_jnt"),
-                               m=jntOffset.getMatrix(ws=1),
+            jnt = addParentJnt(parent=jnt_o,
+                               name=jnt_o.shortName().replace("_offset_jnt", "_exp_jnt"),
+                               m=jnt_o.getMatrix(ws=1),
+                               vis=True)
+            # jnt.drawStyle.set(2)
+            pm.makeIdentity(jnt, a=1, t=0, r=1, s=0, n=0, pn=1)
+            self.jnt_exp.append(jnt)
+
+    def create_base_joints(self):
+        for jnt_e in self.jnt_exp:
+            # general joints creation
+            jnt = addParentJnt(parent=jnt_e,
+                               name=jnt_e.shortName().replace("_exp_jnt", "_jnt"),
+                               m=jnt_e.getMatrix(ws=1),
                                vis=True)
             # jnt.drawStyle.set(2)
             pm.makeIdentity(jnt, a=1, t=0, r=1, s=0, n=0, pn=1)
@@ -338,7 +354,7 @@ class SineSetupMain:
         lock_attrs(self.master_grp)
         self.master_ctl = masterCC
 
-    def create_content(self, use_ribbon):
+    def create_content(self, use_ribbon=False):
         # # FK setup
         for index in self.slaves:
             fk_setup = FKSetup(slaves=self.slaves[index],
@@ -349,24 +365,26 @@ class SineSetupMain:
             self.fk_setups.append(fk_setup)
             # spline IK setup
             # for index in self.slaves:
-            ik_setup = SplineIKSetup(slaves=fk_setup.jnt_offset,
+            ik_setup = SplineIKSetup(slaves=fk_setup.jnt_exp,
                                      matrices=self.matrices[index],
                                      config=self.config,
                                      index=index,
                                      parent=self.element_grp)
             self.ik_setups.append(ik_setup)
+            """
             if use_ribbon:
-                ribbon_setup = RibbonSetup(slaves_count=len(fk_setup.jnt_offset),
+                ribbon_setup = RibbonSetup(slaves_count=len(fk_setup.jnt_exp),
                                            config=self.config,
                                            index=index,
                                            fk_setup=fk_setup
                                            )
                 self.ribbon_setups.append(ribbon_setup)
+            """
 
     def set_exp(self, use_ribbon):
         if not use_ribbon:
             for chain_index, fk_setup in enumerate(self.fk_setups):
-                elements = fk_setup.ctls_fk
+                elements = fk_setup.jnt_exp
                 self._set_exp(self.master_ctl, elements, chain_index)
 
     @staticmethod
@@ -381,21 +399,21 @@ class SineSetupMain:
             float $freqX = {_masterName}.speedX * 0.1  * {_tau} ;
             float $delayX = {_masterName}.delayX * -5;
             float $offX = {_masterName}.offsetX;
-            float $rdmX = {_masterName}.rdmX * noise(0.1 * {_masterName}.rdmX + {_chain_index});
+            float $rdmX = {_masterName}.rdmX * noise(0.01 * {_masterName}.rdmX + {_chain_index});
             // -----------------------------------------------------------------------;
             float $falloffY = {_masterName}.falloffY * ({_joint_count}) * 0.1;  
             float $yVal = {_masterName}.ampY * 0.1* (($falloffY / 5) + 1);
             float $freqY = {_masterName}.speedY * 0.1  * {_tau} ;
             float $delayY = {_masterName}.delayY * -5;
             float $offY = {_masterName}.offsetY;
-            float $rdmY = {_masterName}.rdmY * noise(0.1 * {_masterName}.rdmY + {_chain_index});
+            float $rdmY = {_masterName}.rdmY * noise(0.01 * {_masterName}.rdmY + {_chain_index});
             // -----------------------------------------------------------------------;
             float $falloffZ = {_masterName}.falloffZ * ({_joint_count}) * 0.1;  
             float $zVal = {_masterName}.ampZ * 0.1* (($falloffZ / 5) + 1);
             float $freqZ = {_masterName}.speedZ * 0.1 * {_tau} ;
             float $delayZ = {_masterName}.delayZ * -5;
             float $offZ = {_masterName}.offsetZ;
-            float $rdmZ= {_masterName}.rdmZ * noise(0.1 * {_masterName}.rdmZ + {_chain_index});\n
+            float $rdmZ= {_masterName}.rdmZ * noise(0.01 * {_masterName}.rdmZ + {_chain_index});\n
             """.format(_masterName=masterCtl.name(), _joint_count=joint_count, _tau=tau, _chain_index=chain_index)
 
         for index, item in enumerate(elements):

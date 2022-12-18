@@ -12,7 +12,7 @@ class PyGrips(QtWidgets.QWidget):
 
         # SETUP UI
         # ///////////////////////////////////////////////////////////////
-        super().__init__()
+        super(PyGrips, self).__init__()
         self.parent = parent
         self.setParent(parent)
         self.wi = Widgets()

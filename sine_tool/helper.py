@@ -45,7 +45,7 @@ def getWalkTag(node):
 
 
 def get_defaultMatrix(transform):
-    return [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, *transform, 1.0]
+    return [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, transform[0], transform[1], transform[2], 1.0]
 
 
 def get_average_distance_on_curve(curve, locators=2):
@@ -218,7 +218,8 @@ def addParentJnt(parent, name, m=datatypes.Matrix(), vis=True):
     if parent is not None:
         children = parent.getChildren()
         parent.addChild(node)
-        pm.parent(children, node)
+        if children:
+            pm.parent(children, node)
 
     return node
 

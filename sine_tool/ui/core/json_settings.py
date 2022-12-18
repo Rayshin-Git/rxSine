@@ -1,3 +1,4 @@
+import codecs
 import json
 import os
 
@@ -9,7 +10,7 @@ class Settings(object):
     app_path = os.path.dirname(os.path.dirname(__file__))
     settings_path = os.path.normpath(os.path.join(app_path, json_file))
     if not os.path.isfile(settings_path):
-        print(f"WARNING: \"settings.json\" not found! check in the folder {settings_path}")
+        print("WARNING: \"settings.json\" not found! check in the folder {}".format(settings_path))
 
     # INIT SETTINGS
     # ///////////////////////////////////////////////////////////////
@@ -27,13 +28,13 @@ class Settings(object):
     # ///////////////////////////////////////////////////////////////
     def serialize(self):
         # WRITE JSON FILE
-        with open(self.settings_path, "w", encoding='utf-8') as write:
+        with codecs.open(self.settings_path, "w", 'utf-8') as write:
             json.dump(self.items, write, indent=4)
 
     # DESERIALIZE JSON
     # ///////////////////////////////////////////////////////////////
     def deserialize(self):
         # READ JSON FILE
-        with open(self.settings_path, "r", encoding='utf-8') as reader:
+        with codecs.open(self.settings_path, "r", 'utf-8') as reader:
             settings = json.loads(reader.read())
             self.items = settings

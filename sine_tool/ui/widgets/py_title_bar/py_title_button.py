@@ -1,4 +1,6 @@
 # ///////////////////////////////////////////////////////////////
+from PySide2.QtSvg import QSvgRenderer
+
 from sine_tool.qt_core import *
 
 
@@ -11,9 +13,9 @@ class PyTitleButton(QtWidgets.QPushButton):
             app_parent=None,
             tooltip_text="",
             btn_id=None,
-            width=30*DPI_SCALE,
-            height=30*DPI_SCALE,
-            radius=8*DPI_SCALE,
+            width=30 * DPI_SCALE,
+            height=30 * DPI_SCALE,
+            radius=8 * DPI_SCALE,
             bg_color="#343b48",
             bg_color_hover="#3c4454",
             bg_color_pressed="#2c313c",
@@ -27,7 +29,7 @@ class PyTitleButton(QtWidgets.QPushButton):
             text_foreground="#8a95aa",
             is_active=False
     ):
-        super().__init__()
+        super(PyTitleButton, self).__init__()
 
         # SET DEFAULT PARAMETERS
         self.setFixedSize(width, height)
@@ -169,7 +171,11 @@ class PyTitleButton(QtWidgets.QPushButton):
     # DRAW ICON WITH COLORS
     # ///////////////////////////////////////////////////////////////
     def icon_paint(self, qp, image, rect):
-        icon = QtGui.QPixmap(image)
+
+        size = QtCore.QSize(rect.width()/4.5, rect.height()/4.5)
+        icon = QtGui.QIcon(image).pixmap(size)
+        # icon = QtGui.QPixmap(image)
+
         painter = QtGui.QPainter(icon)
         painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceIn)
         if self._is_active:

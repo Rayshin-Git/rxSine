@@ -29,7 +29,7 @@ class PyPushButton(QtWidgets.QPushButton):
             text,
             parent=None,
     ):
-        super().__init__()
+        super(PyPushButton, self).__init__()
         themes = Themes()
         self.themes = themes.items
         self.setFixedHeight(24 * DPI_SCALE)
