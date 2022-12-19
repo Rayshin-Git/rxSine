@@ -1,5 +1,5 @@
 from ...core.json_themes import Themes
-from ....qt_core import *
+from ....utils import *
 
 # STYLE
 # ///////////////////////////////////////////////////////////////

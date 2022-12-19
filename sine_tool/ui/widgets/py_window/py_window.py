@@ -1,4 +1,4 @@
-from ....qt_core import *
+from ....utils import *
 
 # IMPORT SETTINGS
 # ///////////////////////////////////////////////////////////////

@@ -2,12 +2,12 @@ from ..core.json_settings import Settings
 from ..core.json_themes import Themes
 from ..widgets.py_grips import PyGrips
 from ..widgets.py_title_bar import PyTitleBar
-from ...qt_core import *
+from ...utils import *
 
 app = maya_main_window()
 
 
-class SubWindow(QtWidgets.QDialog):
+class SubWindow(QtWidgets.QDialog,object):
     bg_style = """
     QDialog{{background:{_bg_color};
     border-radius: {_border_radius};
@@ -234,7 +234,7 @@ class SubWindow(QtWidgets.QDialog):
             event.accept()
 
 
-class MainWindow(SubWindow):
+class MainWindow(SubWindow,object):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setup_grip_custom()

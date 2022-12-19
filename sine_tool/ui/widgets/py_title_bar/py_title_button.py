@@ -1,7 +1,7 @@
 # ///////////////////////////////////////////////////////////////
 from PySide2.QtSvg import QSvgRenderer
 
-from sine_tool.qt_core import *
+from sine_tool.utils import *
 
 
 # PY TITLE BUTTON

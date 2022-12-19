@@ -4,7 +4,7 @@ from .py_div import PyDiv
 # IMPORT BUTTON
 # ///////////////////////////////////////////////////////////////
 from .py_title_button import PyTitleButton
-from ....qt_core import *
+from ....utils import *
 # IMPORT FUNCTIONS
 # ///////////////////////////////////////////////////////////////
 from ....ui.core.functions import *

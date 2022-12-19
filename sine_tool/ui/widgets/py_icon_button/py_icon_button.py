@@ -1,4 +1,4 @@
-from ....qt_core import *
+from ....utils import *
 
 
 # PY TITLE BUTTON
@@ -27,7 +27,7 @@ class PyIconButton(QtWidgets.QPushButton):
             top_margin=40,
             is_active=False
     ):
-        super().__init__()
+        super(PyIconButton, self).__init__()
 
         # SET DEFAULT PARAMETERS
         self.setFixedSize(width, height)
@@ -170,7 +170,10 @@ class PyIconButton(QtWidgets.QPushButton):
     # DRAW ICON WITH COLORS
     # ///////////////////////////////////////////////////////////////
     def icon_paint(self, qp, image, rect):
-        icon = QtGui.QPixmap(image)
+        size = QtCore.QSize(rect.width()/2, rect.height()/2)
+        icon = QtGui.QIcon(image).pixmap(size)
+        # icon = QtGui.QPixmap(image)
+
         painter = QtGui.QPainter(icon)
         painter.setCompositionMode(QtGui.QPainter.CompositionMode_SourceIn)
         if self._is_active:

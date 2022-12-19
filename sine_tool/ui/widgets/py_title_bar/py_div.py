@@ -1,4 +1,4 @@
-from sine_tool.qt_core import *
+from sine_tool.utils import *
 
 
 # CUSTOM LEFT MENU

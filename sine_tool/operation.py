@@ -196,7 +196,7 @@ class FKSetup:
                 elementGrp = addNPO(self.fk_grp, rename=base_name)
                 pm.parent(elementGrp, self.parent)
 
-            if i != len(elements) - 1:
+            elif i != 0 and i != len(elements) - 1:
                 _length += (self.jnt_offset[i].getTranslation(ws=1) - self.jnt_offset[i - 1].getTranslation(
                     ws=1)).length()
 
@@ -204,7 +204,7 @@ class FKSetup:
             else:
                 _length += (self.jnt_offset[i].getTranslation() - self.jnt_offset[i - 1].getTranslation()).length()
                 last_joint = pm.PyNode(self.jnt_offset[-1])
-                average_length = _length / (len(elements) - 2.0) if len(elements) >= 2 else _length
+                average_length = _length / (len(elements) - 2.0) if len(elements) > 2 else _length
                 tip = pm.duplicate(last_joint, n=last_joint.name().replace(last_joint.namespace(), '') + '_TIP')[0]
                 pm.parent(tip, last_joint)
                 tip.setTranslation(last_joint.getTranslation(space='object') * average_length, space='object')

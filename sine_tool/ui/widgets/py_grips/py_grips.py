@@ -2,7 +2,7 @@ import sys
 
 # IMPORT QT CORE
 # ///////////////////////////////////////////////////////////////
-from ....qt_core import *
+from ....utils import *
 
 
 # PY GRIPS

@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import ast
+from ..six import ensure_text
 from functools import partial
 
 from maya import cmds
 
 import pymel.core as pm
 
+from .core.functions import Functions
 from ..ui.templates.main_window import MainWindow, SubWindow
 from ..ui.templates.widgets import IntSliderGroup, FloatSliderGroup, FlowLayout
 from ..ui.widgets.py_combobox import PyCombobox
@@ -14,13 +16,13 @@ from ..ui.widgets.py_list_widget import PyListWidget
 from ..ui.widgets.py_push_button import PyPushButton
 from .widgets.py_icon_button import PyIconButton
 from .widgets.py_line_edit import PyLineEdit
-from ..qt_core import *
+from ..utils import *
 from ..operation import SineSetupMain
 
 _dir_name = os.path.dirname(__file__)
 icon_dir = os.path.join(_dir_name, "images", "svg_icons")
 
-_L = LANGUAGE = 0  # 0 for English, 1 for Japanese
+_L = LANGUAGE = 1  # 0 for English, 1 for Japanese
 
 COLOR_INDEX = {}
 for __COLOR in range(2, 32):
@@ -47,10 +49,26 @@ class SineUI(MainWindow):
         self.top_label.setFont(font)
         self.top_label.setMargin(14 * DPI_SCALE)
 
-        text = ["add Controller", "コントローラを追加"]
+        text = ["Add to List", "リストに追加"]
         self.left_top_btn = PyPushButton(text[_L])
-        text = ["remove Controller", "コントローラを除去"]
+        text = ["Remove from List", "リストから削除"]
         self.left_top_btn2 = PyPushButton(text[_L])
+        text = ["Import", "導入"]
+        self.left_top_btn3 = PyIconButton(icon_path=Functions.set_svg_icon("icon_folder_open.svg"),
+                                          parent=self.parent(),
+                                          app_parent=None,
+                                          tooltip_text=text[_L],
+                                          bg_color_hover="#1e2229",
+                                          width=60
+                                          )
+        text = ["Export", "輸出"]
+        self.left_top_btn4 = PyIconButton(icon_path=Functions.set_svg_icon("icon_save.svg"),
+                                          parent=self.parent(),
+                                          app_parent=None,
+                                          tooltip_text=text[_L],
+                                          bg_color_hover="#1e2229",
+                                          width=60
+                                          )
         text = ["Delete Selected", "選択を削除"]
         self.right_top_btn = PyPushButton(text[_L])
 
@@ -63,10 +81,12 @@ class SineUI(MainWindow):
 
         self.source_lw = PyListWidget()
         self.source_lw.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        text = ["Create", "コントローラを作成"]
+        text = ["Create Setup", "セットアップを作成"]
         self.left_btn = PyPushButton(text[_L])
         text = ["Create Exp", "エクスプレーションを作成"]
         self.left_btn2 = PyPushButton(text[_L])
+        text = ["Create Exp", "エクスプレーションを作成"]
+        self.left_btn3 = PyPushButton(text[_L])
 
         self.master_lw = PyListWidget()
         self.master_lw.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
@@ -79,8 +99,10 @@ class SineUI(MainWindow):
         left_layout = QtWidgets.QVBoxLayout()
 
         top_left_btn_layout = QtWidgets.QHBoxLayout()
-        top_left_btn_layout.addWidget(self.left_top_btn)
-        top_left_btn_layout.addWidget(self.left_top_btn2)
+        top_left_btn_layout.addWidget(self.left_top_btn, 2)
+        top_left_btn_layout.addWidget(self.left_top_btn2, 2)
+        top_left_btn_layout.addWidget(self.left_top_btn3, 1)
+        top_left_btn_layout.addWidget(self.left_top_btn4, 1)
 
         source_list_layout = QtWidgets.QVBoxLayout()
         source_list_layout.addWidget(self.source_lw)
@@ -88,6 +110,7 @@ class SineUI(MainWindow):
         left_btn_layout = QtWidgets.QHBoxLayout()
         left_btn_layout.addWidget(self.left_btn)
         left_btn_layout.addWidget(self.left_btn2)
+        left_btn_layout.addWidget(self.left_btn3)
 
         left_layout.addLayout(top_left_btn_layout)
         left_layout.addLayout(source_list_layout)
@@ -125,9 +148,11 @@ class SineUI(MainWindow):
     def create_connections(self):
         self.left_top_btn.clicked.connect(self.add_source)
         self.left_top_btn2.clicked.connect(self.remove_source)
-        self.left_btn.clicked.connect(self.add_master)
+        self.left_top_btn3.clicked.connect(self.import_source)
+        self.left_btn.clicked.connect(self.add_master_item)
 
     def add_source(self):
+        """ add item to ui list, get warnings if obj already assigned """
         sl = pm.ls(os=1, o=1)
         if not sl:  # maybe add a condition to limit len(sl)>1 ?
             return
@@ -136,12 +161,13 @@ class SineUI(MainWindow):
                 if i in self.source_checker:
                     text = ["object '{}' already assigned".format(i),
                             "オブジェクト '{}' はすでに割り当てられています".format(i)]
-                    return pm.warning(text)
+                    return pm.warning(ensure_text(text[_L]))
         text = str([str(i.name()) for i in sl])
         self.source_lw.addItem(text)
         [self.source_checker.append(i) for i in sl if i not in self.source_checker]
 
     def remove_source(self):
+        """ remove selected item from ui"""
         if not self.source_lw.selectedIndexes():
             return
         indices = [(i.row(), i) for i in self.source_lw.selectedIndexes()]
@@ -151,7 +177,18 @@ class SineUI(MainWindow):
             [self.source_checker.remove(i) for i in items if i in self.source_checker]
             self.source_lw.takeItem(i[0])
 
-    def add_master(self):
+    def import_source(self):
+        # TODO : first read the data, check if the data is valid, if True then clean out the exist data and import list
+        self.source_lw.clear()
+        self.source_checker = []
+        pass
+
+    def export_source(self):
+        # TODO : export the list form ui
+        pass
+
+    def add_master_item(self):
+        """ add master item to the ui list """
         if not self.source_lw.selectedItems():
             return
         selected_sets = [i.text() for i in self.source_lw.selectedItems()]
@@ -168,7 +205,7 @@ class SineUI(MainWindow):
             except pm.MayaNodeError:
                 text = ["failed to get pynodes from list. index:{}".format(current_index),
                         "{}番のリストからの pynode の取得に失敗しました".format(current_index)]
-                return pm.warning(text[_L])
+                return pm.warning(ensure_text(text[_L]))
             matrices[current_index] = [pm.xform(i, q=1, m=1, ws=1) for i in pynodes]
 
         self.settings_dialog.show()
@@ -177,7 +214,7 @@ class SineUI(MainWindow):
             self.master_lw.addItem(master.config["name"])
 
     def closeEvent(self, event):
-        super(MainWindow, self).closeEvent(event)
+        # super(SineUI, self).closeEvent(event)
         self.settings_dialog.close()
         self.close()
 
@@ -336,7 +373,7 @@ class SineSettingsDialog(SubWindow):
     def on_confirm(self):
         if not self.line_edit.text():
             text = ["Please Set a Ctrl Name!", "コントローラーの名前を指定してください"]
-            return pm.warning(text[_L])
+            return pm.warning(ensure_text(text[_L]))
         self.config = dict(
             name=self.line_edit.text(),
             fk_size=self.fk_size_slider.value(),
