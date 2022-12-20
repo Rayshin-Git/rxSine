@@ -1,12 +1,14 @@
 from math import pi
 
 import pymel.core as pm
+from maya import cmds
 from mgear.core.node import add_controller_tag
 from mgear.core.transform import getTransformFromPos
 from pymel.core.datatypes import Vector
 
 from .helper import addNPO, addJoint, create_ctl, lock_attrs, create_group, get_average_distance_on_curve, \
     get_defaultMatrix, addParentJnt, getWalkTag, getFrameRate
+from .six import PY2
 
 
 def alphabet_index(index):
@@ -53,6 +55,7 @@ class SplineIKSetup:
 
         self.ik_grp = None
         self.jnt_ik = []
+        self.ctls_ik = []
 
         self.ik_base_name = ELEMENT_Grp.format(_name=self.name) + "_"
         self.IK_chain_Grp_name = SIK_Grp.format(_name=self.name, _chain_index=alphabet_index(self.index))
@@ -121,6 +124,7 @@ class SplineIKSetup:
                              icon="null",
                              w=self.ik_size
                              )
+            self.ctls_ik.append(ctl)
             jnt = addJoint(parent=ctl,
                            name=name + "CJnt",
                            m=matrix,
@@ -153,7 +157,6 @@ class FKSetup:
         self.parent = parent
 
         self.fk_grp = None
-        self.ctls_grp = None
         self.jnt_offset = []
         self.jnt_exp = []
         self.jnt_fk = []
@@ -300,6 +303,7 @@ class SineSetupMain:
         self.create_master()
         self.create_content(USE_RIBBON)
         self.set_exp(USE_RIBBON)
+        self.create_sets()
 
     def create_master(self):
         size = 1.5 * self.config["ik_size"]
@@ -333,9 +337,9 @@ class SineSetupMain:
         # add attrs
         for attr in ["Sine_All", "strength",
                      # "xVal", "yVal", "zVal", "falloff", "speed", "offset", "delay",
-                     "parameter_X", "ampX", "speedX", "offsetX", "delayX", "rdmX", "falloffX",
-                     "parameter_Y", "ampY", "speedY", "offsetY", "delayY", "rdmY", "falloffY",
-                     "parameter_Z", "ampZ", "speedZ", "offsetZ", "delayZ", "rdmZ", "falloffZ"
+                     "parameter_X", "ampX", "speedX", "offset_frameX", "delayX", "rdmX", "falloffX",
+                     "parameter_Y", "ampY", "speedY", "offset_frameY", "delayY", "rdmY", "falloffY",
+                     "parameter_Z", "ampZ", "speedZ", "offset_frameZ", "delayZ", "rdmZ", "falloffZ"
                      ]:
             if attr == "strength":
                 pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
@@ -381,6 +385,65 @@ class SineSetupMain:
                 self.ribbon_setups.append(ribbon_setup)
             """
 
+    @staticmethod
+    def _ensure_sets(name, allow_existing=True):
+        if pm.objExists(name) and allow_existing:
+            sets = pm.PyNode(name)
+        elif pm.objExists(name) and not allow_existing:
+            pm.delete(name)
+            sets = pm.sets(em=1, n=name)
+        else:
+            sets = pm.sets(em=1, n=name)
+        return sets
+
+    def create_sets(self):
+        flags = ["se", "si", "sr", "sw", "ssw"]
+        state = {}
+        for x in flags:
+            kwargs = {"q": True, x: True}
+            val = pm.scriptEditorInfo(**kwargs)
+            state[x] = val
+        # print(state)
+        pm.scriptEditorInfo(e=1, si=0, sr=0)
+        # ---------------------------------------------------------
+
+        sine_main_sets_name = "Sine_Main_Set"
+        base_name = self.fk_setups[0].fk_base_name
+
+        sine_main_sets = self._ensure_sets(sine_main_sets_name)
+        element_sets = self._ensure_sets(base_name + "Sets", allow_existing=False)
+        sine_main_sets.add(element_sets)
+
+        sine_main_fk_sets = self._ensure_sets(base_name + "FK_sets", allow_existing=False)
+        sine_main_ik_sets = self._ensure_sets(base_name + "IK_sets", allow_existing=False)
+        element_sets.add(self.master_ctl)
+        element_sets.add(sine_main_fk_sets)
+        element_sets.add(sine_main_ik_sets)
+
+        fk_sub_sets = []
+        for fk_setup in self.fk_setups:
+            ctrls = fk_setup.ctls_fk
+            fk_sub_set = pm.sets(ctrls, n=fk_setup.FK_chain_Grp_name + "_sets")
+            sine_main_fk_sets.add(fk_sub_set)
+            fk_sub_sets.append(fk_sub_set)
+
+        ik_sub_sets = []
+        for ik_setup in self.ik_setups:
+            ctrls = ik_setup.ctls_ik
+            ik_sub_set = pm.sets(ctrls, n=ik_setup.IK_chain_Grp_name + "_sets")
+            sine_main_ik_sets.add(ik_sub_set)
+            ik_sub_sets.append(ik_sub_set)
+
+        # ---------------------------------------------------------
+        if PY2:
+            for x, val in state.iteritems():  # noqa
+                kwargs = {"e": True, x: val}
+                pm.scriptEditorInfo(**kwargs)
+        else:
+            for x, val in state.items():
+                kwargs = {"e": True, x: val}
+                pm.scriptEditorInfo(**kwargs)
+
     def set_exp(self, use_ribbon):
         if not use_ribbon:
             for chain_index, fk_setup in enumerate(self.fk_setups):
@@ -392,27 +455,27 @@ class SineSetupMain:
         joint_count = len(elements)
         EXP = """
             float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) ;
-            // -----------------------------------------------------------------------;
+            \n
             float $falloffX = {_masterName}.falloffX * ({_joint_count}) * 0.1;  
             float $xVal = {_masterName}.ampX * 0.1 * (($falloffX / 5) + 1);
             float $freqX = {_masterName}.speedX * 0.1  * {_tau} ;
             float $delayX = {_masterName}.delayX * -5;
-            float $offX = {_masterName}.offsetX / {_frame_rate} * $freqX;
+            float $offX = {_masterName}.offset_frameX / {_frame_rate} * $freqX;
             float $rdmX = {_masterName}.rdmX * noise({_masterName}.rdmX + {_chain_index});
-            // -----------------------------------------------------------------------;
+            \n
             float $falloffY = {_masterName}.falloffY * ({_joint_count}) * 0.1;  
             float $yVal = {_masterName}.ampY * 0.1* (($falloffY / 5) + 1);
             float $freqY = {_masterName}.speedY * 0.1  * {_tau} ;
             float $delayY = {_masterName}.delayY * -5;
-            float $offY = {_masterName}.offsetY / {_frame_rate} * $freqY;
+            float $offY = {_masterName}.offset_frameY / {_frame_rate} * $freqY;
             float $rdmY = {_masterName}.rdmY * noise({_masterName}.rdmY + {_chain_index});
-            // -----------------------------------------------------------------------;
+            \n
             float $falloffZ = {_masterName}.falloffZ * ({_joint_count}) * 0.1;  
             float $zVal = {_masterName}.ampZ * 0.1* (($falloffZ / 5) + 1);
             float $freqZ = {_masterName}.speedZ * 0.1 * {_tau} ;
             float $delayZ = {_masterName}.delayZ * -5;
-            float $offZ = {_masterName}.offsetZ / {_frame_rate} * $freqZ;
-            float $rdmZ= {_masterName}.rdmZ * noise({_masterName}.rdmZ + {_chain_index});\n
+            float $offZ = {_masterName}.offset_frameZ / {_frame_rate} * $freqZ;
+            float $rdmZ= {_masterName}.rdmZ * noise({_masterName}.rdmZ + {_chain_index});
             """.format(_masterName=masterCtl.name(),
                        _joint_count=joint_count,
                        _tau=tau,
@@ -439,8 +502,8 @@ class SineSetupMain:
                 * $totalAmp 
                 * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0)      
                 * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
-                * $xVal;
-             // -----------------------------------------------------------------------\n
+                * $xVal; \n
+                
              {_item}.rotateY = 
                 sin ( 
                     time * $freqY
@@ -452,8 +515,8 @@ class SineSetupMain:
                 * $totalAmp 
                 * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0)      
                 * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
-                * $yVal;
-            // -----------------------------------------------------------------------\n
+                * $yVal; \n
+                
             {_item}.rotateZ = 
                 sin ( 
                     time * $freqZ 
@@ -466,6 +529,7 @@ class SineSetupMain:
                 * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0)      
                 * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
                 * $zVal; \n
+             // -----------------------------------------------------------------------\n
                 """.format(_item=item,
                            _index=index + 1,
                            _joint_count=float(joint_count),
