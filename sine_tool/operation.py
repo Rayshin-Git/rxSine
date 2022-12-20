@@ -1,7 +1,5 @@
 from math import pi
 
-tau = pi * 2
-
 import pymel.core as pm
 from mgear.core.node import add_controller_tag
 from mgear.core.transform import getTransformFromPos
@@ -20,6 +18,8 @@ def alphabet_index(index):
     index_name = loop + alphabet[int(index % 26)]
     return index_name
 
+
+tau = pi * 2
 
 # grp naming
 MASTER_GRP_NAME = "Sine_Grp"
@@ -365,7 +365,7 @@ class SineSetupMain:
             self.fk_setups.append(fk_setup)
             # spline IK setup
             # for index in self.slaves:
-            ik_setup = SplineIKSetup(slaves=fk_setup.jnt_exp,
+            ik_setup = SplineIKSetup(slaves=fk_setup.jnt_offset,
                                      matrices=self.matrices[index],
                                      config=self.config,
                                      index=index,

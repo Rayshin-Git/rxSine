@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import ast
+import json
+
 from ..six import ensure_text
 from functools import partial
 
@@ -18,6 +20,7 @@ from .widgets.py_icon_button import PyIconButton
 from .widgets.py_line_edit import PyLineEdit
 from ..utils import *
 from ..operation import SineSetupMain
+from ..pipeline_helper import USER_PATH
 
 _dir_name = os.path.dirname(__file__)
 icon_dir = os.path.join(_dir_name, "images", "svg_icons")
@@ -32,6 +35,7 @@ for __COLOR in range(2, 32):
 class SineUI(MainWindow):
     def __init__(self):
         super(SineUI, self).__init__()
+        self.start_file_path = USER_PATH
         self.source_checker = []
         self.settings_dialog = SineSettingsDialog()
         self.create_widgets()
@@ -43,7 +47,8 @@ class SineUI(MainWindow):
         font = QtGui.QFont()
         font.setPointSize(6 * DPI_SCALE)
         font.setBold(True)
-        text = ["Tips:select name space", "ネームスペースを選択してください"]
+        text = ["Please select the namespace of the object to be applied",
+                "適用するオブジェクトのネームスペースを選択してください"]
         self.top_label = QtWidgets.QLabel(text[_L])
         self.top_label.setAlignment(QtCore.Qt.AlignCenter)
         self.top_label.setFont(font)
@@ -53,7 +58,7 @@ class SineUI(MainWindow):
         self.left_top_btn = PyPushButton(text[_L])
         text = ["Remove from List", "リストから削除"]
         self.left_top_btn2 = PyPushButton(text[_L])
-        text = ["Import", "導入"]
+        text = ["Import Preset", "Preset導入"]
         self.left_top_btn3 = PyIconButton(icon_path=Functions.set_svg_icon("icon_folder_open.svg"),
                                           parent=self.parent(),
                                           app_parent=None,
@@ -61,7 +66,7 @@ class SineUI(MainWindow):
                                           bg_color_hover="#1e2229",
                                           width=60
                                           )
-        text = ["Export", "輸出"]
+        text = ["Export Preset", "Preset出力"]
         self.left_top_btn4 = PyIconButton(icon_path=Functions.set_svg_icon("icon_save.svg"),
                                           parent=self.parent(),
                                           app_parent=None,
@@ -83,10 +88,6 @@ class SineUI(MainWindow):
         self.source_lw.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         text = ["Create Setup", "セットアップを作成"]
         self.left_btn = PyPushButton(text[_L])
-        text = ["Create Exp", "エクスプレーションを作成"]
-        self.left_btn2 = PyPushButton(text[_L])
-        text = ["Create Exp", "エクスプレーションを作成"]
-        self.left_btn3 = PyPushButton(text[_L])
 
         self.master_lw = PyListWidget()
         self.master_lw.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
@@ -109,8 +110,6 @@ class SineUI(MainWindow):
 
         left_btn_layout = QtWidgets.QHBoxLayout()
         left_btn_layout.addWidget(self.left_btn)
-        left_btn_layout.addWidget(self.left_btn2)
-        left_btn_layout.addWidget(self.left_btn3)
 
         left_layout.addLayout(top_left_btn_layout)
         left_layout.addLayout(source_list_layout)
@@ -149,22 +148,34 @@ class SineUI(MainWindow):
         self.left_top_btn.clicked.connect(self.add_source)
         self.left_top_btn2.clicked.connect(self.remove_source)
         self.left_top_btn3.clicked.connect(self.import_source)
+        self.left_top_btn4.clicked.connect(self.export_source)
         self.left_btn.clicked.connect(self.add_master_item)
 
-    def add_source(self):
+        self.source_lw.itemDoubleClicked.connect(self.select_source_item)
+        self.master_lw.itemDoubleClicked.connect(self.select_master_item)
+
+    def select_source_item(self):
+        items = [ast.literal_eval(i.text()) for i in self.source_lw.selectedItems()][0]
+        pm.select(items)
+
+    def select_master_item(self):
+        pass
+
+    def add_source(self, obj=None):
         """ add item to ui list, get warnings if obj already assigned """
-        sl = pm.ls(os=1, o=1)
-        if not sl:  # maybe add a condition to limit len(sl)>1 ?
+        if not obj:
+            obj = pm.ls(os=1, o=1)
+        if not obj:  # maybe add a condition to limit len(sl)>1 ?
             return
         if self.source_checker:
-            for i in sl:
+            for i in obj:
                 if i in self.source_checker:
                     text = ["object '{}' already assigned".format(i),
                             "オブジェクト '{}' はすでに割り当てられています".format(i)]
                     return pm.warning(ensure_text(text[_L]))
-        text = str([str(i.name()) for i in sl])
+        text = str([str(i.name()) for i in obj])
         self.source_lw.addItem(text)
-        [self.source_checker.append(i) for i in sl if i not in self.source_checker]
+        [self.source_checker.append(i) for i in obj if i not in self.source_checker]
 
     def remove_source(self):
         """ remove selected item from ui"""
@@ -178,14 +189,49 @@ class SineUI(MainWindow):
             self.source_lw.takeItem(i[0])
 
     def import_source(self):
-        # TODO : first read the data, check if the data is valid, if True then clean out the exist data and import list
-        self.source_lw.clear()
-        self.source_checker = []
-        pass
+        filters = "Sine Tool Config (*%s)" % ".sineConfig"
+        file, selected_filter = QtWidgets.QFileDialog.getOpenFileName(self, "Select Config File",
+                                                                      self.start_file_path,
+                                                                      filters,
+                                                                      filters)
+        # if file exists, load config
+        if os.path.exists(file):
+            file_name = os.path.basename(file)
+            self.start_file_path = os.path.dirname(file)
+            f = open(file)
+            config = json.load(f)
+            # then check if config is able to pass into ListWidget
+            all_val = []
+            [all_val.extend(i) for i in list(config.values())]
+            config_valid = all([len(pm.ls(i)) == 1 for i in all_val])
+            if not config_valid:
+                not_in_scene = [i for i in all_val if not pm.objExists(i)]
+                name_duped = [i for i in all_val if len(pm.ls(i)) > 1]
+                if not_in_scene:
+                    pm.warning("{} not in the scene ".format(not_in_scene))
+                if name_duped:
+                    pm.warning("{} has duplicated names".format(name_duped))
+                return
+            self.source_lw.clear()
+            self.source_checker = []
+            self.settings_dialog.line_edit.setText(file_name.split(".")[0])
+            for chain in config.values():
+                chain_nodes = [pm.PyNode(i) for i in chain]
+                self.add_source(chain_nodes)
 
     def export_source(self):
-        # TODO : export the list form ui
-        pass
+        config_description = {}
+        for i in range(self.source_lw.count()):
+            config_description[i] = ast.literal_eval(self.source_lw.item(i).text())
+        filters = "Sine Tool Config (*%s)" % ".sineConfig"
+        file, selected_filter = QtWidgets.QFileDialog.getSaveFileName(self, "Select Config File",
+                                                                      self.start_file_path,
+                                                                      filters,
+                                                                      filters)
+        with open(file, 'w') as f:
+            json.dump(config_description, f)
+        if os.path.exists(file):
+            self.start_file_path = os.path.dirname(file)
 
     def add_master_item(self):
         """ add master item to the ui list """
@@ -230,7 +276,7 @@ class SineSettingsDialog(SubWindow):
         self.create_widgets()
         self.create_layout()
         self.create_connections()
-
+        self.titleBar.set_title("Sine Ctrl Settings")
         self.setWindowTitle("Sine Ctrl Settings")
         # self.setStyleSheet(STYLE)
         self.setFixedSize(380 * DPI_SCALE, 352 * DPI_SCALE)
@@ -439,35 +485,3 @@ class ColorIndexGroup(QtWidgets.QWidget):
         self.current_index = index
         self.current_cc_color = self.cc_color_index[index]
         self.btn_clicked.emit()
-
-
-"""
-    def store_config_file(self):
-        config_description = dict(skinPath=self.folder_path_le.text(),
-                                  fileExt=self.export_format_cb.currentIndex(),
-                                  useStoredList=self.obj_storage_chk.isChecked(),
-                                  objList=self.obj_storage_le.text(),
-                                  skip_already_skinned=self.skip_already_skinned_chk.isChecked(),
-                                  )
-        if not os.path.exists(CONFIG_DIR):
-            os.makedirs(CONFIG_DIR)
-            pm.displayInfo("config folder created : {}".format(CONFIG_DIR))
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config_description, f)
-        debug("config stored : {}".format(config_description))
-
-    def restore_config(self):
-        if os.path.exists(CONFIG_FILE):
-            f = open(CONFIG_FILE)
-            config = json.load(f)
-            debug("config loaded: {}".format(config))
-            try:
-                self.folder_path_le.setText(str(config["skinPath"]))
-                self.export_format_cb.setCurrentIndex(config["fileExt"])
-                self.obj_storage_chk.setChecked(config['useStoredList'])
-                self.obj_storage_le.setText(str(config["objList"]))
-                self.skin_table.update_model(config["skinPath"], self.export_format_cb.currentText())
-                self.skip_already_skinned_chk.setChecked(config["skip_already_skinned"])
-            except:
-                pass
-"""

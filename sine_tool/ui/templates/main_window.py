@@ -7,7 +7,7 @@ from ...utils import *
 app = maya_main_window()
 
 
-class SubWindow(QtWidgets.QDialog,object):
+class SubWindow(QtWidgets.QDialog, object):
     bg_style = """
     QDialog{{background:{_bg_color};
     border-radius: {_border_radius};
@@ -177,7 +177,8 @@ class SubWindow(QtWidgets.QDialog,object):
             radius=8,
             font_family=self.settings["font"]["family"],
             title_size=self.settings["font"]["title_size"],
-            is_custom_title_bar=self.settings["custom_title_bar"]
+            is_custom_title_bar=self.settings["custom_title_bar"],
+            default_btns=(0, 0, 1),
         )
         self.titleBar.set_title("Sine Tool")
         self.setWindowTitle("Sine Tool")
@@ -234,10 +235,45 @@ class SubWindow(QtWidgets.QDialog,object):
             event.accept()
 
 
-class MainWindow(SubWindow,object):
+class MainWindow(SubWindow, object):
     def __init__(self):
         super(MainWindow, self).__init__()
         self.setup_grip_custom()
+
+    def _setup_titlebar(self):
+        if PY2:
+            self.setWindowFlags(self.windowFlags() ^ QtCore.Qt.WindowContextHelpButtonHint)
+
+        self.titleBar = PyTitleBar(
+            self,
+            app,
+            logo_width=100 * DPI_SCALE,
+            logo_image="sine_logo.svg",
+            bg_color=self.themes["app_color"]["bg_two"],
+            div_color=self.themes["app_color"]["bg_three"],
+            btn_bg_color=self.themes["app_color"]["bg_two"],
+            btn_bg_color_hover=self.themes["app_color"]["bg_three"],
+            btn_bg_color_pressed=self.themes["app_color"]["bg_one"],
+            icon_color=self.themes["app_color"]["icon_color"],
+            icon_color_hover=self.themes["app_color"]["icon_hover"],
+            icon_color_pressed=self.themes["app_color"]["icon_pressed"],
+            icon_color_active=self.themes["app_color"]["icon_active"],
+            context_color=self.themes["app_color"]["context_color"],
+            dark_one=self.themes["app_color"]["dark_one"],
+            text_foreground=self.themes["app_color"]["text_foreground"],
+            radius=8,
+            font_family=self.settings["font"]["family"],
+            title_size=self.settings["font"]["title_size"],
+            is_custom_title_bar=self.settings["custom_title_bar"],
+            default_btns=(1, 1, 1),
+        )
+        self.titleBar.set_title("Sine Tool")
+        self.setWindowTitle("Sine Tool")
+        self.layout.addWidget(self.titleBar)
+
+        self.setWindowFlags(self.windowFlags() |
+                            QtCore.Qt.FramelessWindowHint
+                            )
 
     def setup_grip_custom(self):
         # advanced grip sample
