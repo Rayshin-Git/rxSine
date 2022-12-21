@@ -1,3 +1,4 @@
+import ast
 from math import pi
 
 import pymel.core as pm
@@ -335,15 +336,16 @@ class SineSetupMain:
             self.master_grp = addNPO(self.element_grp, rename=MASTER_GRP_NAME)[0]
 
         # add attrs
-        for attr in ["Sine_All", "strength",
-                     # "xVal", "yVal", "zVal", "falloff", "speed", "offset", "delay",
+        for attr in ["Sine_All",
+                     "fk_vis", "ik_vis", "annotation_vis", "strength",
                      "parameter_X", "ampX", "speedX", "offset_frameX", "delayX", "rdmX", "falloffX",
                      "parameter_Y", "ampY", "speedY", "offset_frameY", "delayY", "rdmY", "falloffY",
                      "parameter_Z", "ampZ", "speedZ", "offset_frameZ", "delayZ", "rdmZ", "falloffZ"
                      ]:
             if attr == "strength":
-                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
-                masterCC.attr(attr).set(10)
+                pm.addAttr(masterCC, ln=attr, at='double', dv=10, keyable=True)
+            elif "_vis" in attr:
+                pm.addAttr(masterCC, ln=attr, at='bool', dv=1, min=0, max=1, keyable=True)
             elif attr.startswith("par") or attr == "Sine_All":
                 pm.addAttr(masterCC, ln=attr, at='enum', en="----------:", keyable=True)
             elif attr.startswith("amp"):
@@ -352,6 +354,16 @@ class SineSetupMain:
                 pm.addAttr(masterCC, ln=attr, at='double', dv=0, smn=0, smx=10, keyable=True)
             else:
                 pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
+
+        # add annotation node from master ctl to
+        x, y, z = root_position
+        annotation = pm.annotate(masterCC, tx=element_grp_name, p=(x, y + size * 0.75, z)).getParent()
+        annotation.rename(element_grp_name + "_annotation")
+        annotation.getShape().displayArrow.set(0)
+        annotation.overrideEnabled.set(1)
+        annotation.overrideDisplayType.set(1)
+        pm.parent(annotation, masterCC)
+        masterCC.attr("annotation_vis") >> annotation.v
 
         # lock attrs
         lock_attrs(self.element_grp)
@@ -367,6 +379,8 @@ class SineSetupMain:
                                index=index,
                                parent=self.element_grp)
             self.fk_setups.append(fk_setup)
+            self.master_ctl.attr("fk_vis") >> fk_setup.fk_grp.v
+            fk_setup.fk_grp.v.set(keyable=False, lock=True)
             # spline IK setup
             # for index in self.slaves:
             ik_setup = SplineIKSetup(slaves=fk_setup.jnt_offset,
@@ -375,6 +389,8 @@ class SineSetupMain:
                                      index=index,
                                      parent=self.element_grp)
             self.ik_setups.append(ik_setup)
+            self.master_ctl.attr("ik_vis") >> ik_setup.ik_grp.v
+            ik_setup.ik_grp.v.set(keyable=False, lock=True)
             """
             if use_ribbon:
                 ribbon_setup = RibbonSetup(slaves_count=len(fk_setup.jnt_exp),
@@ -397,52 +413,57 @@ class SineSetupMain:
         return sets
 
     def create_sets(self):
-        flags = ["se", "si", "sr", "sw", "ssw"]
-        state = {}
-        for x in flags:
-            kwargs = {"q": True, x: True}
-            val = pm.scriptEditorInfo(**kwargs)
-            state[x] = val
-        # print(state)
-        pm.scriptEditorInfo(e=1, si=0, sr=0)
-        # ---------------------------------------------------------
+        # flags = ["se", "si", "sr", "sw", "ssw"]
+        # state = {}
+        # for x in flags:
+        #     kwargs = {"q": True, x: True}
+        #     val = pm.scriptEditorInfo(**kwargs)
+        #     state[x] = val
+        # # print(state)
+        # pm.scriptEditorInfo(e=1, se=1, si=1, sr=1, sw=1, ssw=1)
+        # # ---------------------------------------------------------
 
-        sine_main_sets_name = "Sine_Main_Set"
+        sine_main_sets_name = "Sine_Main_Sets"
         base_name = self.fk_setups[0].fk_base_name
 
         sine_main_sets = self._ensure_sets(sine_main_sets_name)
         element_sets = self._ensure_sets(base_name + "Sets", allow_existing=False)
-        sine_main_sets.add(element_sets)
 
-        sine_main_fk_sets = self._ensure_sets(base_name + "FK_sets", allow_existing=False)
-        sine_main_ik_sets = self._ensure_sets(base_name + "IK_sets", allow_existing=False)
-        element_sets.add(self.master_ctl)
-        element_sets.add(sine_main_fk_sets)
-        element_sets.add(sine_main_ik_sets)
+        sine_main_fk_sets = self._ensure_sets(base_name + "FK_Sets", allow_existing=False)
+        sine_main_ik_sets = self._ensure_sets(base_name + "IK_Sets", allow_existing=False)
 
         fk_sub_sets = []
         for fk_setup in self.fk_setups:
             ctrls = fk_setup.ctls_fk
-            fk_sub_set = pm.sets(ctrls, n=fk_setup.FK_chain_Grp_name + "_sets")
+            fk_sub_set = pm.sets(ctrls, n=fk_setup.FK_chain_Grp_name + "_Sets")
             sine_main_fk_sets.add(fk_sub_set)
             fk_sub_sets.append(fk_sub_set)
 
         ik_sub_sets = []
         for ik_setup in self.ik_setups:
             ctrls = ik_setup.ctls_ik
-            ik_sub_set = pm.sets(ctrls, n=ik_setup.IK_chain_Grp_name + "_sets")
+            ik_sub_set = pm.sets(ctrls, n=ik_setup.IK_chain_Grp_name + "_Sets")
             sine_main_ik_sets.add(ik_sub_set)
             ik_sub_sets.append(ik_sub_set)
 
-        # ---------------------------------------------------------
-        if PY2:
-            for x, val in state.iteritems():  # noqa
-                kwargs = {"e": True, x: val}
-                pm.scriptEditorInfo(**kwargs)
-        else:
-            for x, val in state.items():
-                kwargs = {"e": True, x: val}
-                pm.scriptEditorInfo(**kwargs)
+        element_sets.union([self.master_ctl, sine_main_fk_sets, sine_main_ik_sets])
+        sine_main_sets.add(element_sets)
+
+        sine_main_bake_sets = self._ensure_sets(sine_main_sets_name.replace("_Sets", "_Bake_Sets"))
+        sine_sub_bake_sets = self._ensure_sets(base_name + "Bake_Sets", allow_existing=False)
+        slave_nodes = [ctrl for chain in self.slaves.values() for ctrl in chain]
+        sine_sub_bake_sets.union(slave_nodes)
+        sine_main_bake_sets.add(sine_sub_bake_sets)
+
+        # # ---------------------------------------------------------
+        # if PY2:
+        #     for x, val in state.iteritems():  # noqa
+        #         kwargs = {"e": True, x: val}
+        #         pm.scriptEditorInfo(**kwargs)
+        # else:
+        #     for x, val in state.items():
+        #         kwargs = {"e": True, x: val}
+        #         pm.scriptEditorInfo(**kwargs)
 
     def set_exp(self, use_ribbon):
         if not use_ribbon:

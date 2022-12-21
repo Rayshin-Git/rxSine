@@ -47,8 +47,11 @@ class SineUI(MainWindow):
         font = QtGui.QFont()
         font.setPointSize(6 * DPI_SCALE)
         font.setBold(True)
-        text = ["Please select the namespace of the object to be applied",
-                "適用するオブジェクトのネームスペースを選択してください"]
+        text = [
+            # "Please select the namespace of the object to be applied",
+            "（Namespace-related functions are not yet done）",
+            # "適用するオブジェクトのネームスペースを選択してください",
+            "（まだネームスペース関係の機能はしません）"]
         self.top_label = QtWidgets.QLabel(text[_L])
         self.top_label.setAlignment(QtCore.Qt.AlignCenter)
         self.top_label.setFont(font)
@@ -74,7 +77,7 @@ class SineUI(MainWindow):
                                           bg_color_hover="#1e2229",
                                           width=60
                                           )
-        text = ["Delete Selected", "選択を削除"]
+        text = ["Delete Selected Setup", "選択セットアップを削除"]
         self.right_top_btn = PyPushButton(text[_L])
 
         self.name_spacing_cbx = PyCombobox()
@@ -91,8 +94,8 @@ class SineUI(MainWindow):
 
         self.master_lw = PyListWidget()
         self.master_lw.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        text = ["Delete All", "全て削除"]
-        self.right_btn2 = PyPushButton(text[_L])
+        text = ["Clear Sets", "セットをクリア"]
+        self.right_btn = PyPushButton(text[_L])
 
     def create_layout(self):
 
@@ -125,7 +128,7 @@ class SineUI(MainWindow):
         master_list_layout.addWidget(self.master_lw)
 
         right_btn_layout = QtWidgets.QHBoxLayout()
-        right_btn_layout.addWidget(self.right_btn2)
+        right_btn_layout.addWidget(self.right_btn)
 
         right_layout.addLayout(top_right_btn_layout)
         right_layout.addLayout(master_list_layout)
@@ -150,6 +153,9 @@ class SineUI(MainWindow):
         self.left_top_btn3.clicked.connect(self.import_source)
         self.left_top_btn4.clicked.connect(self.export_source)
         self.left_btn.clicked.connect(self.add_master_item)
+
+        self.right_top_btn.clicked.connect(self.delete_selected_setup)
+        self.right_btn.clicked.connect(self.clear_related_sets)
 
         self.source_lw.itemDoubleClicked.connect(self.select_source_item)
         self.master_lw.itemDoubleClicked.connect(self.select_master_item)
@@ -208,9 +214,13 @@ class SineUI(MainWindow):
                 not_in_scene = [i for i in all_val if not pm.objExists(i)]
                 name_duped = [i for i in all_val if len(pm.ls(i)) > 1]
                 if not_in_scene:
-                    pm.warning("{} not in the scene ".format(not_in_scene))
+                    text = ["{} not in the scene ".format(not_in_scene),
+                            "{} はシーン内に存在しません".format(not_in_scene)]
+                    pm.warning(ensure_text(text[_L]))
                 if name_duped:
-                    pm.warning("{} has duplicated names".format(name_duped))
+                    text = ["{} has duplicated names".format(name_duped),
+                            "{} は名前が重複している".format(name_duped)]
+                    pm.warning(ensure_text(text[_L]))
                 return
             self.source_lw.clear()
             self.source_checker = []
@@ -257,7 +267,18 @@ class SineUI(MainWindow):
         self.settings_dialog.show()
         if self.settings_dialog.exec_() == QtWidgets.QDialog.Accepted:
             master = SineSetupMain(elements, matrices, self.settings_dialog.config)
-            self.master_lw.addItem(master.config["name"])
+            self.master_lw.addItem("Sine_" + master.config["name"])
+
+    def delete_selected_setup(self):
+        if self.master_lw.selectedItems():
+            [pm.delete(i.text()) for i in self.master_lw.selectedItems()]
+        if pm.objExists("Sine_Grp") and not pm.PyNode("Sine_Grp").getChildren():
+            pm.delete("Sine_Grp")
+
+    @staticmethod
+    def clear_related_sets():
+        sets = pm.ls("Sine*Sets", type="objectSet")
+        pm.delete(sets)
 
     def closeEvent(self, event):
         # super(SineUI, self).closeEvent(event)
