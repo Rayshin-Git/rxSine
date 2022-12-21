@@ -3,6 +3,7 @@
 import ast
 import json
 
+from .widgets.py_credits_bar import PyCredits
 from ..six import ensure_text
 from functools import partial
 
@@ -25,7 +26,8 @@ from ..pipeline_helper import USER_PATH
 _dir_name = os.path.dirname(__file__)
 icon_dir = os.path.join(_dir_name, "images", "svg_icons")
 
-_L = LANGUAGE = 1  # 0 for English, 1 for Japanese
+# TODO : option btn to toggle language
+_L = LANGUAGE = 0  # 0 for English, 1 for Japanese
 
 COLOR_INDEX = {}
 for __COLOR in range(2, 32):
@@ -41,7 +43,6 @@ class SineUI(MainWindow):
         self.create_widgets()
         self.create_layout()
         self.create_connections()
-        icon_path = os.path.join(icon_dir, "active_menu.svg")
 
     def create_widgets(self):
         font = QtGui.QFont()
@@ -147,6 +148,28 @@ class SineUI(MainWindow):
 
         self.content_layout.addLayout(main_layout, -2)
 
+        # CREDITS / BOTTOM APP FRAME
+        # ///////////////////////////////////////////////////////////////
+        self.credits_frame = QtWidgets.QFrame()
+        self.credits_frame.setMinimumHeight(26)
+        self.credits_frame.setMaximumHeight(26)
+        # CREATE LAYOUT
+        self.credits_layout = QtWidgets.QHBoxLayout(self.credits_frame)
+        self.credits_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ADD CUSTOM WIDGET CREDITS
+        self.credits = PyCredits(
+            bg_two=self.themes["app_color"]["bg_two"],
+            copyright=self.settings["copyright"],
+            version=self.settings["version"],
+            font_family=self.settings["font"]["family"],
+            text_size=self.settings["font"]["text_size"],
+            text_description_color=self.themes["app_color"]["text_description"]
+        )
+
+        #  ADD TO LAYOUT
+        self.content_layout.addWidget(self.credits)
+
     def create_connections(self):
         self.left_top_btn.clicked.connect(self.add_source)
         self.left_top_btn2.clicked.connect(self.remove_source)
@@ -165,7 +188,8 @@ class SineUI(MainWindow):
         pm.select(items)
 
     def select_master_item(self):
-        pass
+        item = [i.text()+"_MCtl" for i in self.master_lw.selectedItems()][0]
+        pm.select(item)
 
     def add_source(self, obj=None):
         """ add item to ui list, get warnings if obj already assigned """

@@ -15,5 +15,3 @@ BASE_PATH = pp.get_base_path() if PIPLINE_AVAILABLE else ""
 MGEAR_CUSTOM_PATH = os.path.join(BASE_PATH, PROJECT_NAME, "mGear", "build", "custom_steps") if PIPLINE_AVAILABLE else ""
 USER_BASE_PATH = os.path.join(BASE_PATH, PROJECT_NAME, "user") if PIPLINE_AVAILABLE else ""
 USER_PATH = os.path.join(USER_BASE_PATH, USER_NAME) if PIPLINE_AVAILABLE else ""
-# test overwrite
-USER_PATH = r"C:\Users\ohrsm\Desktop\test"

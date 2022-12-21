@@ -1,7 +1,7 @@
 {
     "app_name": "Sine Tool",
-    "version" : "v0.0.1",
-    "copyright" : "By: Ruixin He, UI: Wanderson M. Pimenta, ",
+    "version" : "v0.5.0",
+    "copyright" : " Last Updated: 12/21/2022",
     "year" : 2022,
     "theme_name" : "default",
     "custom_title_bar": true,

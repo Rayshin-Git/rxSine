@@ -1,5 +1,6 @@
 from ..core.json_settings import Settings
 from ..core.json_themes import Themes
+from ..widgets.py_credits_bar import PyCredits
 from ..widgets.py_grips import PyGrips
 from ..widgets.py_title_bar import PyTitleBar
 from ...utils import *
@@ -80,7 +81,7 @@ class SubWindow(QtWidgets.QDialog, object):
 
         self._setup_titlebar()
         self.content_layout = QtWidgets.QVBoxLayout()
-        self.content_layout.setContentsMargins(10, 0, 10, 20)
+        self.content_layout.setContentsMargins(10, 0, 10, 10)
         self.layout.addLayout(self.content_layout)
         # self.layout.addWidget(QtWidgets.QLabel())
         # self.layout.addStretch(-1)
