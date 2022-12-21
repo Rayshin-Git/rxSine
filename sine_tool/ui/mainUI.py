@@ -188,7 +188,7 @@ class SineUI(MainWindow):
         pm.select(items)
 
     def select_master_item(self):
-        item = [i.text()+"_MCtl" for i in self.master_lw.selectedItems()][0]
+        item = [i.text() + "_MCtl" for i in self.master_lw.selectedItems()][0]
         pm.select(item)
 
     def add_source(self, obj=None):
@@ -215,7 +215,7 @@ class SineUI(MainWindow):
         indices.sort(key=lambda i: i[0], reverse=True)
         for i in indices:
             items = ast.literal_eval(self.source_lw.itemFromIndex(i[1]).text())
-            [self.source_checker.remove(i) for i in items if i in self.source_checker]
+            [self.source_checker.remove(_i) for _i in items if _i in self.source_checker]
             self.source_lw.takeItem(i[0])
 
     def import_source(self):
