@@ -25,7 +25,8 @@ class PyIconButton(QtWidgets.QPushButton):
             text_foreground="#8a95aa",
             context_color="#568af2",
             top_margin=40,
-            is_active=False
+            is_active=False,
+            offsetPos=[0, 0]
     ):
         super(PyIconButton, self).__init__()
 
@@ -50,6 +51,7 @@ class PyIconButton(QtWidgets.QPushButton):
         self._set_icon_path = icon_path
         self._set_icon_color = icon_color
         self._set_border_radius = radius
+        self.offsetPos = offsetPos
         # Parent
         self._parent = parent
         self._app_parent = app_parent
@@ -70,6 +72,10 @@ class PyIconButton(QtWidgets.QPushButton):
     # ///////////////////////////////////////////////////////////////
     def set_active(self, is_active):
         self._is_active = is_active
+        self.repaint()
+
+    def toggle_active(self):
+        self._is_active = not (self._is_active)
         self.repaint()
 
     # RETURN IF IS ACTIVE MENU
@@ -170,7 +176,7 @@ class PyIconButton(QtWidgets.QPushButton):
     # DRAW ICON WITH COLORS
     # ///////////////////////////////////////////////////////////////
     def icon_paint(self, qp, image, rect):
-        size = QtCore.QSize(rect.width()/2, rect.height()/2)
+        size = QtCore.QSize(rect.width() / 2, rect.height() / 2)
         icon = QtGui.QIcon(image).pixmap(size)
         # icon = QtGui.QPixmap(image)
 
@@ -205,8 +211,8 @@ class PyIconButton(QtWidgets.QPushButton):
 
         # FORMAT POSITION
         # Adjust tooltip position with offset
-        pos_x = (pos.x() - (self._tooltip.width() // 2)) + (self.width() // 2)
-        pos_y = pos.y() - self._top_margin
+        pos_x = (pos.x() - (self._tooltip.width() // 2)) + (self.width() // 2) + self.offsetPos[0]
+        pos_y = pos.y() - self._top_margin + self.offsetPos[1]
 
         # SET POSITION TO WIDGET
         # Move tooltip position

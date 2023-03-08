@@ -1,35 +1,36 @@
 {
     "app_name": "Sine Tool",
-    "version" : "v0.5.0",
-    "copyright" : " Last Updated: 12/21/2022",
-    "year" : 2022,
-    "theme_name" : "default",
+    "version": "v0.6.6(master)",
+    "copyright": "Last Updated: 03/06/2023 03:36PM",
+    "year": 2022,
+    "theme_name": "default",
     "custom_title_bar": true,
     "startup_size": [
-        1400,
-        720
+        800,
+        520
     ],
     "minimum_size": [
-        960,
-        540
+        500,
+        360
     ],
-    "lef_menu_size" : {
-        "minimum" : 50,
-        "maximum" : 240
+    "lef_menu_size": {
+        "minimum": 50,
+        "maximum": 240
     },
-    "left_menu_content_margins" : 3,
-    "left_column_size" : {
-        "minimum" : 0,
-        "maximum" : 240
+    "left_menu_content_margins": 3,
+    "left_column_size": {
+        "minimum": 0,
+        "maximum": 240
     },
-    "right_column_size" : {
-        "minimum" : 0,
-        "maximum" : 240
+    "right_column_size": {
+        "minimum": 0,
+        "maximum": 240
     },
-    "time_animation" : 500,
-    "font" : {
-        "family" : "Segoe UI",
-        "title_size" : 10,
-        "text_size" : 9
-    }
+    "time_animation": 500,
+    "font": {
+        "text_size": 10,
+        "title_size": 14,
+        "family": "Segoe UI"
+    },
+    "language": "EN"
 }

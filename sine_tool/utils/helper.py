@@ -4,7 +4,101 @@ import maya.OpenMaya as om
 import pymel.core as pm
 from maya import cmds
 from pymel.core import datatypes
+from pymel import versions
 
+def getTransformFromPos(pos):
+    """Create a transformation Matrix from a given position.
+
+    Arguments:
+        pos (vector): Position for the transformation matrix
+
+    Returns:
+        matrix: The newly created transformation matrix
+
+    >>>  t = tra.getTransformFromPos(self.guide.pos["root"])
+
+    """
+    m = datatypes.Matrix()
+    m[0] = [1.0, 0, 0, 0.0]
+    m[1] = [0, 1.0, 0, 0.0]
+    m[2] = [0, 0, 1.0, 0.0]
+    m[3] = [pos[0], pos[1], pos[2], 1.0]
+
+    return m
+
+def add_controller_tag(ctl, tagParent=None):
+    """Add a controller tag
+
+    Args:
+        ctl (dagNode): Controller to add the tar
+        tagParent (dagNode): tag parent for the connection
+    """
+    if versions.current() >= 201650:
+        pm.controller(ctl)
+        ctt = pm.PyNode(pm.controller(ctl, q=True)[0])
+        if tagParent:
+            controller_tag_connect(ctt, tagParent)
+
+        return ctt
+
+
+def get_next_available_index(attr):
+    """get the next available index from a multi attr
+    This function is a workaround because the connect attr flag next available
+    is not working.
+
+    The connectAttr to the children attribute is giving error
+        i.e: pm.connectAttr(ctt.attr("parent"),
+                             tpTagNode.attr("children"), na=True)
+        if using the next available option flag
+        I was expecting to use ctt.setParent(tagParent) but doest't work as
+        expected.
+        After reading the documentation this method looks prety
+        useless.
+        Looks like is boolean and works based on selection :(
+
+    Args:
+        attr (attr): Attr multi
+
+    Returns:
+        int: index
+    """
+
+    ne = attr.getNumElements()
+    if ne == attr.numConnectedElements():
+        return ne
+    else:
+        for e in range(ne):
+            if not attr.attr(attr.elements()[e]).listConnections():
+                return e
+
+
+def controller_tag_connect(ctt, tagParent):
+    """Summary
+
+    Args:
+        ctt (TYPE): Teh control tag
+        tagParent (TYPE): The object with the parent control tag
+    """
+    if pm.controller(tagParent, q=True):
+        tpTagNode = pm.PyNode(pm.controller(tagParent, q=True)[0])
+        tpTagNode.cycleWalkSibling.set(True)
+        pm.connectAttr(tpTagNode.prepopulate, ctt.prepopulate, f=True)
+
+        ni = get_next_available_index(tpTagNode.children)
+        pm.disconnectAttr(ctt.parent)
+        pm.connectAttr(ctt.parent, tpTagNode.attr(
+            "children[%s]" % str(ni)))
+
+
+def alphabet_index(index):
+    if index > 26 * 26:
+        return pm.warning("number too big")
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"  # noqa
+    index_name = ""
+    loop = alphabet[int(index / 26)] if int(index / 26) > 0 else ""
+    index_name = loop + alphabet[int(index % 26)]
+    return index_name
 
 def getFrameRate():
     """
@@ -88,6 +182,24 @@ def one_undo(func):
 
         finally:
             cmds.undoInfo(closeChunk=True)
+
+    return wrap
+
+
+def disable_undo(func):
+    @wraps(func)
+    def wrap(*args, **kwargs):
+        # type: (*str, **str) -> None
+
+        try:
+            cmds.undoInfo(state=False)
+            return func(*args, **kwargs)
+
+        except Exception as e:
+            raise e
+
+        finally:
+            cmds.undoInfo(state=True)
 
     return wrap
 

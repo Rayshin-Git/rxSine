@@ -1,6 +1,6 @@
+from .right_column import RightColumn
 from ..core.json_settings import Settings
 from ..core.json_themes import Themes
-from ..widgets.py_credits_bar import PyCredits
 from ..widgets.py_grips import PyGrips
 from ..widgets.py_title_bar import PyTitleBar
 from ...utils import *
@@ -31,6 +31,7 @@ class SubWindow(QtWidgets.QDialog, object):
         super(SubWindow, self).__init__(parent)
 
         # parameters >>>>>>>>>>>>>>>>
+        self._L = None
         self.window = None
         self.themes = None
         self.settings = None
@@ -45,6 +46,8 @@ class SubWindow(QtWidgets.QDialog, object):
         self.right_grip = None
         self.left_grip = None
         self.hide_grips = None
+        self.left_column = None
+        self.right_column = None
 
         self.bg_color = bg_color
         self.text_color = text_color
@@ -53,9 +56,11 @@ class SubWindow(QtWidgets.QDialog, object):
         self.border_size = border_size
         self.border_color = border_color
         self.enable_shadow = enable_shadow
+
         # <<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
         self.setup_main_layout()
+        # self._setup_right_column()
 
     def setup_main_layout(self):
         parent = self.parent()
@@ -66,6 +71,7 @@ class SubWindow(QtWidgets.QDialog, object):
         # ///////////////////////////////////////////////////////////////
         settings = Settings()
         self.settings = settings.items
+        self._L = ["EN","JP"].index(self.settings["language"])
 
         # LOAD THEME COLOR
         # ///////////////////////////////////////////////////////////////
@@ -73,18 +79,25 @@ class SubWindow(QtWidgets.QDialog, object):
         self.themes = themes.items
 
         # SET INITIAL PARAMETERS
-
         self.layout = QtWidgets.QVBoxLayout(self)
-        self.resize(self.settings["startup_size"][0], self.settings["startup_size"][1])
-        self.setMinimumSize(self.settings["minimum_size"][0], self.settings["minimum_size"][1])
+        self.resize(self.settings["startup_size"][0]*DPI_SCALE, self.settings["startup_size"][1]*DPI_SCALE)
+        self.setMinimumSize(self.settings["minimum_size"][0]*DPI_SCALE, self.settings["minimum_size"][1]*DPI_SCALE)
         self.layout.setContentsMargins(0, 0, 0, 0)
 
-        self._setup_titlebar()
+        # CREATE LAYOUT
+        self.main_layout = QtWidgets.QVBoxLayout()
+        self.main_layout.setContentsMargins(10, 0, 10, 10)
+        self.content_area_frame = QtWidgets.QFrame()
+        self.content_area_layout = QtWidgets.QHBoxLayout(self.content_area_frame)
+        self.content_area_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_area_layout.setSpacing(0)
         self.content_layout = QtWidgets.QVBoxLayout()
-        self.content_layout.setContentsMargins(10, 0, 10, 10)
-        self.layout.addLayout(self.content_layout)
-        # self.layout.addWidget(QtWidgets.QLabel())
-        # self.layout.addStretch(-1)
+        self.content_layout.setSpacing(5)
+        self.content_area_layout.addLayout(self.content_layout)
+        self.main_layout.addWidget(self.content_area_frame)
+
+        self._setup_titlebar()
+        self.layout.addLayout(self.main_layout)
         self.set_stylesheet()
 
     def setup_content(self, layout):
@@ -188,6 +201,135 @@ class SubWindow(QtWidgets.QDialog, object):
         self.setWindowFlags(self.windowFlags() |
                             QtCore.Qt.FramelessWindowHint
                             )
+    # -- RIGHT COLUMN
+    def right_column_is_visible(self):
+        width = self.right_column_frame.width()
+        if width == 0:
+            return False
+        else:
+            return True
+
+    def set_right_column_menu(self, menu):
+        self.right_column.menus.setCurrentWidget(menu)
+
+    def toggle_right_column(self):
+        # GET ACTUAL CLUMNS SIZE
+        try:
+            left_column_width = self.left_column_frame.width()
+        except:
+            left_column_width = 0
+        width = self.right_column_frame.width()
+
+        self.start_box_animation(width, "right")
+
+    def start_box_animation(self, right_box_width, direction):
+        right_width = 0
+        time_animation = self.settings["time_animation"]
+        minimum_right = self.settings["right_column_size"]["minimum"]*DPI_SCALE
+        maximum_right = self.settings["right_column_size"]["maximum"]*DPI_SCALE
+
+        # Check Right values
+        if right_box_width == minimum_right and direction == "right":
+            right_width = maximum_right
+        else:
+            right_width = minimum_right
+
+        # ANIMATION RIGHT BOX
+        self.right_box = QtCore.QPropertyAnimation(self.right_column_frame, b"minimumWidth")
+        self.right_box.setDuration(time_animation)
+        self.right_box.setStartValue(right_box_width)
+        self.right_box.setEndValue(right_width)
+        self.right_box.setEasingCurve(QtCore.QEasingCurve.InOutQuart)
+
+        # GROUP ANIMATION
+        self.group = QtCore.QParallelAnimationGroup()
+        self.group.stop()
+        self.group.addAnimation(self.right_box)
+        self.group.start()
+
+    # def start_box_animation(self, left_box_width, right_box_width, direction):
+    #     right_width = 0
+    #     left_width = 0
+    #     time_animation = self.ui.settings["time_animation"]
+    #     minimum_left = self.ui.settings["left_column_size"]["minimum"]
+    #     maximum_left = self.ui.settings["left_column_size"]["maximum"]
+    #     minimum_right = self.ui.settings["right_column_size"]["minimum"]
+    #     maximum_right = self.ui.settings["right_column_size"]["maximum"]
+    #
+    #     # Check Left Values
+    #     if left_box_width == minimum_left and direction == "left":
+    #         left_width = maximum_left
+    #     else:
+    #         left_width = minimum_left
+    #
+    #     # Check Right values
+    #     if right_box_width == minimum_right and direction == "right":
+    #         right_width = maximum_right
+    #     else:
+    #         right_width = minimum_right
+    #
+    #         # ANIMATION LEFT BOX
+    #     self.left_box = QtCore.QPropertyAnimation(self.ui.left_column_frame, b"minimumWidth")
+    #     self.left_box.setDuration(time_animation)
+    #     self.left_box.setStartValue(left_box_width)
+    #     self.left_box.setEndValue(left_width)
+    #     self.left_box.setEasingCurve(QtCore.QEasingCurve.InOutQuart)
+    #
+    #     # ANIMATION RIGHT BOX
+    #     self.right_box = QtCore.QPropertyAnimation(self.ui.right_column_frame, b"minimumWidth")
+    #     self.right_box.setDuration(time_animation)
+    #     self.right_box.setStartValue(right_box_width)
+    #     self.right_box.setEndValue(right_width)
+    #     self.right_box.setEasingCurve(QtCore.QEasingCurve.InOutQuart)
+    #
+    #     # GROUP ANIMATION
+    #     self.group = QtCore.QParallelAnimationGroup()
+    #     self.group.stop()
+    #     self.group.addAnimation(self.left_box)
+    #     self.group.addAnimation(self.right_box)
+    #     self.group.start()
+
+    def _setup_right_column(self):
+        # ADD RIGHT WIDGETS
+        # Add here the right widgets
+        # ///////////////////////////////////////////////////////////////
+        self.right_app_frame = QtWidgets.QFrame()
+        # ADD RIGHT APP LAYOUT
+        self.right_app_layout = QtWidgets.QVBoxLayout(self.right_app_frame)
+        # self.right_app_layout.setContentsMargins(3, 3, 3, 3)
+        # self.right_app_layout.setSpacing(6)
+        self.right_app_layout.setContentsMargins(3, 0, 3, 3)
+        self.right_app_layout.setSpacing(6)
+        # RIGHT BAR
+        self.right_column_frame = QtWidgets.QFrame()
+        self.right_column_frame.setMinimumWidth(self.settings["right_column_size"]["minimum"])
+        self.right_column_frame.setMaximumWidth(self.settings["right_column_size"]["minimum"])
+
+        # IMPORT RIGHT COLUMN
+        # ///////////////////////////////////////////////////////////////
+        self.content_area_right_layout = QtWidgets.QVBoxLayout(self.right_column_frame)
+        self.content_area_right_layout.setContentsMargins(5, 0, 0, 0)
+        self.content_area_right_layout.setSpacing(0)
+
+        # RIGHT BG
+        self.content_area_right_bg_frame = QtWidgets.QFrame()
+        self.content_area_right_bg_frame.setObjectName("content_area_right_bg_frame")
+        self.content_area_right_bg_frame.setStyleSheet('''
+                #content_area_right_bg_frame {{
+                    border-radius: 8px;
+                    background-color: {};
+                }}
+                '''.format(self.themes["app_color"]["bg_two"]))
+        # # ADD RIGHT PAGES TO RIGHT COLUMN
+        self.content_area_right_bg_layout = QtWidgets.QVBoxLayout(self.content_area_right_bg_frame)
+        self.right_column = RightColumn(self.content_area_right_bg_frame)
+        self.content_area_right_bg_layout.addWidget(self.right_column)
+        self.content_area_right_bg_layout.setContentsMargins(0,0,0,0)
+        # ADD TO LAYOUTS
+        self.content_area_right_layout.addWidget(self.content_area_right_bg_frame)
+        self.content_area_layout.addWidget(self.right_column_frame)
+
+    # -- RIGHT COLUMN END
 
     # def setup_grip(self):
     #     # advanced grip sample
@@ -239,6 +381,7 @@ class SubWindow(QtWidgets.QDialog, object):
 class MainWindow(SubWindow, object):
     def __init__(self):
         super(MainWindow, self).__init__()
+        self._setup_right_column()
         self.setup_grip_custom()
 
     def _setup_titlebar(self):

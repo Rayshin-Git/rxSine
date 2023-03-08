@@ -1,26 +1,11 @@
-import ast
 from math import pi
 
 import pymel.core as pm
-from maya import cmds
-from mgear.core.node import add_controller_tag
-from mgear.core.transform import getTransformFromPos
-from pymel.core.datatypes import Vector
+from pymel.core.datatypes import Vector, Matrix
 
-from .helper import addNPO, addJoint, create_ctl, lock_attrs, create_group, get_average_distance_on_curve, \
-    get_defaultMatrix, addParentJnt, getWalkTag, getFrameRate
-from .six import PY2
-
-
-def alphabet_index(index):
-    if index > 26 * 26:
-        return pm.warning("number too big")
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"  # noqa
-    index_name = ""
-    loop = alphabet[int(index / 26)] if int(index / 26) > 0 else ""
-    index_name = loop + alphabet[int(index % 26)]
-    return index_name
-
+from .utils.helper import addNPO, addJoint, create_ctl, lock_attrs, create_group, \
+    get_average_distance_on_curve, \
+    get_defaultMatrix, addParentJnt, getWalkTag, getFrameRate, alphabet_index, add_controller_tag, getTransformFromPos
 
 tau = pi * 2
 
@@ -66,7 +51,9 @@ class SplineIKSetup:
         self.create_spline_IK()
         self.create_ctrls()
         self.connect_slave()
-        # TODO : connect attrs on the curve to master controller
+        pm.addAttr(self.ctls_ik[0], ln="sine_multiplier_All", at='double', dv=1, min=0, max=1, keyable=True)
+        for i in range(len(self.slaves)):
+            pm.addAttr(self.ctls_ik[0], ln="FK_multiplier_{}".format(i), at='double', dv=1, keyable=True)
 
     def create_base_joints(self):
         _length = 0
@@ -79,7 +66,7 @@ class SplineIKSetup:
             # general joints creation
             jnt = addJoint(parent=_parent,
                            name=_jnt_name,
-                           m=m,
+                           m=Matrix(m).homogenize(),
                            vis=False)
             pm.makeIdentity(jnt, a=1, t=0, r=1, s=0, n=0, pn=1)
             self.jnt_ik.append(jnt)
@@ -115,20 +102,23 @@ class SplineIKSetup:
         jnts = []
         for i in range(self.ik_count):
             # create grp for each position then controller & joints
+            size = self.ik_size
+            if i == 0:
+                size *= 1.5
             name = self.IK_chain_Grp_name + "_{}_".format(i)
             matrix = get_defaultMatrix(ctl_positions[i])
             grp = create_group(name=name + "CGrp", matrix=matrix, parent=self.ik_grp)
             ctl = create_ctl(parent=grp,
                              name=name + "Ctl",
-                             m=matrix,
+                             m=Matrix(matrix).homogenize(),
                              color=self.color,
                              icon="null",
-                             w=self.ik_size
+                             w=size
                              )
             self.ctls_ik.append(ctl)
             jnt = addJoint(parent=ctl,
                            name=name + "CJnt",
-                           m=matrix,
+                           m=Matrix(matrix).homogenize(),
                            vis=False)
             jnts.append(jnt)
         # pm.skinCluster(*jnts, self.curve, tsb=True, dr=2.0, n=self.curve.getShape().name() + "_skinCluster")
@@ -136,7 +126,12 @@ class SplineIKSetup:
 
     def connect_slave(self):
         for ik, fk in zip(self.jnt_ik, self.slaves):
-            ik.rotate >> fk.rotate
+            ik.rotateX >> fk.rotateX
+            ik.rotateY >> fk.rotateY
+            ik.rotateZ >> fk.rotateZ
+            ik.translateX >> fk.translateX
+            ik.translateY >> fk.translateY
+            ik.translateZ >> fk.translateZ
 
 
 class FKSetup:
@@ -176,6 +171,7 @@ class FKSetup:
     def create_offset_joints(self):
         elements = self.slaves
         _length = 0
+        _localXsum = 0
         for i in range(len(elements)):
             m = self.matrices[i]
             _parent = None if i == 0 else self.jnt_offset[i - 1]
@@ -185,7 +181,7 @@ class FKSetup:
             # general joints creation
             jnt = addJoint(parent=_parent,
                            name=_jnt_name,
-                           m=m,
+                           m=Matrix(m).homogenize(),
                            vis=True)
             jnt.drawStyle.set(2)
             pm.makeIdentity(jnt, a=1, t=0, r=1, s=0, n=0, pn=1)
@@ -203,15 +199,18 @@ class FKSetup:
             elif i != 0 and i != len(elements) - 1:
                 _length += (self.jnt_offset[i].getTranslation(ws=1) - self.jnt_offset[i - 1].getTranslation(
                     ws=1)).length()
+                _localXsum += self.jnt_offset[i].getTranslation(ob=1)[0]
 
             # add last joint tip
             else:
                 _length += (self.jnt_offset[i].getTranslation() - self.jnt_offset[i - 1].getTranslation()).length()
+                _localXsum += self.jnt_offset[i].getTranslation(ob=1)[0]
                 last_joint = pm.PyNode(self.jnt_offset[-1])
-                average_length = _length / (len(elements) - 2.0) if len(elements) > 2 else _length
+                average_length = _length / (len(elements) - 1.0) if len(elements) > 2 else _length
+                scale = _localXsum / _length
                 tip = pm.duplicate(last_joint, n=last_joint.name().replace(last_joint.namespace(), '') + '_TIP')[0]
                 pm.parent(tip, last_joint)
-                tip.setTranslation(last_joint.getTranslation(space='object') * average_length, space='object')
+                tip.setTranslation(Vector(average_length * scale, 0, 0), space='object')
                 tip.radius.set(last_joint.radius.get())
                 self.jnt_offset.append(tip)
 
@@ -220,7 +219,7 @@ class FKSetup:
             # general joints creation
             jnt = addParentJnt(parent=jnt_o,
                                name=jnt_o.shortName().replace("_offset_jnt", "_exp_jnt"),
-                               m=jnt_o.getMatrix(ws=1),
+                               m=Matrix(jnt_o.getMatrix(ws=1)).homogenize(),
                                vis=True)
             # jnt.drawStyle.set(2)
             pm.makeIdentity(jnt, a=1, t=0, r=1, s=0, n=0, pn=1)
@@ -231,7 +230,7 @@ class FKSetup:
             # general joints creation
             jnt = addParentJnt(parent=jnt_e,
                                name=jnt_e.shortName().replace("_exp_jnt", "_jnt"),
-                               m=jnt_e.getMatrix(ws=1),
+                               m=Matrix(jnt_e.getMatrix(ws=1)).homogenize(),
                                vis=True)
             # jnt.drawStyle.set(2)
             pm.makeIdentity(jnt, a=1, t=0, r=1, s=0, n=0, pn=1)
@@ -243,8 +242,10 @@ class FKSetup:
         aim_V = (pm.PyNode(self.slaves[1]).getTranslation(ws=1) - pm.PyNode(self.slaves[0]).getTranslation(
             ws=1)).normal()
         x_axis = Vector(pm.PyNode(self.slaves[0]).getMatrix(ws=1)[0][:-1]).normal()
-        negate_check = aim_V.dot(x_axis) != 1.0
-
+        negate_check = not (0.99 <= aim_V.dot(x_axis) <= 1.01)
+        # print(x_axis)
+        # print(aim_V.dot(x_axis))
+        # print(negate_check)
         v = Vector(-1, 0, 0) if negate_check else Vector(1, 0, 0)
         for i in range(len(self.slaves)):
             # create controller
@@ -254,7 +255,7 @@ class FKSetup:
             length = pos_offset.length()
             ctl = create_ctl(parent=self.jnt_fk[i].getParent(),
                              name=name + "Ctl",
-                             m=matrix,
+                             m=Matrix(matrix).homogenize(),
                              color=self.color,
                              icon="cube",
                              w=length,
@@ -271,7 +272,14 @@ class FKSetup:
 
     def connect_slave(self):
         for fk, slave in zip(self.jnt_fk, self.slaves):
-            fk.scale >> pm.PyNode(slave).scale
+            if not pm.getAttr(slave + '.scaleX', lock=True):
+                fk.scaleX >> pm.PyNode(slave).scaleX
+
+            if not pm.getAttr(slave + '.scaleY', lock=True):
+                fk.scaleY >> pm.PyNode(slave).scaleY
+
+            if not pm.getAttr(slave + '.scaleZ', lock=True):
+                fk.scaleZ >> pm.PyNode(slave).scaleZ
             pm.parentConstraint(fk, slave, mo=0, n=pm.PyNode(slave).name() + "_tempCns")
 
 
@@ -316,12 +324,12 @@ class SineSetupMain:
         for i in range(len(self.slaves)):
             chain_root = pm.PyNode(self.slaves[i][0])
             root_position += chain_root.getTranslation(ws=1)
-        root_position = root_position / len(self.slaves)
+        root_position /= len(self.slaves)
         root_matrix = getTransformFromPos(root_position)
 
         masterCC = create_ctl(parent=None,
                               name=element_grp_name + "_MCtl",
-                              m=root_matrix,
+                              m=Matrix(root_matrix).homogenize(),
                               color=self.config["color"],
                               icon="sphere",
                               w=size
@@ -337,25 +345,43 @@ class SineSetupMain:
 
         # add attrs
         for attr in ["Sine_All",
-                     "fk_vis", "ik_vis", "annotation_vis", "strength",
-                     "parameter_X", "ampX", "speedX", "offset_frameX", "delayX", "rdmX", "falloffX",
-                     "parameter_Y", "ampY", "speedY", "offset_frameY", "delayY", "rdmY", "falloffY",
-                     "parameter_Z", "ampZ", "speedZ", "offset_frameZ", "delayZ", "rdmZ", "falloffZ"
+                     "fk_vis", "ik_vis", "annotation_vis", "roll", "twist",
+                     "strength",
+
+                     "parameter_X", "loop_per_second_X",
+                     "ampX", "amp_bias_rangeX", "amp_bias_LPS_multX", "amp_bias_noiseX",
+                     "offset_frameX", "offset_noiseX", "offset_rdmX",
+                     "delayX", "falloffX",
+                     "amp_offsetX", "amp_positive_multX", "amp_negative_multX",
+
+                     "parameter_Y", "loop_per_second_Y",
+                     "ampY", "amp_bias_rangeY", "amp_bias_LPS_multY", "amp_bias_noiseY",
+                     "offset_frameY", "offset_noiseY", "offset_rdmY",
+                     "delayY", "falloffY",
+                     "amp_offsetY", "amp_positive_multY", "amp_negative_multY",
+
+                     "parameter_Z", "loop_per_second_Z",
+                     "ampZ", "amp_bias_rangeZ", "amp_bias_LPS_multZ", "amp_bias_noiseZ",
+                     "offset_frameZ", "offset_noiseZ", "offset_rdmZ",
+                     "delayZ", "falloffZ",
+                     "amp_offsetZ", "amp_positive_multZ", "amp_negative_multZ"
                      ]:
             if attr == "strength":
-                pm.addAttr(masterCC, ln=attr, at='double', dv=10, keyable=True)
+                pm.addAttr(masterCC, ln=attr, at='double', dv=1, keyable=True)
             elif "_vis" in attr:
                 pm.addAttr(masterCC, ln=attr, at='bool', dv=1, min=0, max=1, keyable=True)
+            elif "_mult" in attr and "_LPS" not in attr:
+                pm.addAttr(masterCC, ln=attr, at='double', dv=1, keyable=True)
             elif attr.startswith("par") or attr == "Sine_All":
                 pm.addAttr(masterCC, ln=attr, at='enum', en="----------:", keyable=True)
-            elif attr.startswith("amp"):
-                pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
+            elif "_range" in attr:
+                pm.addAttr(masterCC, ln=attr, at='double', dv=0, smn=0, smx=1, keyable=True)
             elif attr.startswith("fall"):
                 pm.addAttr(masterCC, ln=attr, at='double', dv=0, smn=0, smx=10, keyable=True)
             else:
                 pm.addAttr(masterCC, ln=attr, at='double', dv=0, keyable=True)
 
-        # add annotation node from master ctl to
+        # add annotation node on master ctl
         x, y, z = root_position
         annotation = pm.annotate(masterCC, tx=element_grp_name, p=(x, y + size * 0.75, z)).getParent()
         annotation.rename(element_grp_name + "_annotation")
@@ -388,8 +414,17 @@ class SineSetupMain:
                                      config=self.config,
                                      index=index,
                                      parent=self.element_grp)
+
+            # ----------------------------------------------------------------------------
+            # temporarily add constraint outside ik_setup class cuz this one not related to it's slave
+            pm.parentConstraint(pm.PyNode(fk_setup.slaves[0]).getParent(), ik_setup.ik_grp,
+                                n=ik_setup.ik_grp.name() + "_tempCns")
+            # ---------------------------------------------------------------------------
+
             self.ik_setups.append(ik_setup)
             self.master_ctl.attr("ik_vis") >> ik_setup.ik_grp.v
+            self.master_ctl.attr("roll") >> ik_setup.handle.roll
+            self.master_ctl.attr("twist") >> ik_setup.handle.twist
             ik_setup.ik_grp.v.set(keyable=False, lock=True)
             """
             if use_ribbon:
@@ -430,6 +465,7 @@ class SineSetupMain:
         element_sets = self._ensure_sets(base_name + "Sets", allow_existing=False)
 
         sine_main_fk_sets = self._ensure_sets(base_name + "FK_Sets", allow_existing=False)
+        sine_main_exp_sets = self._ensure_sets(base_name + "EXP_Sets", allow_existing=False)
         sine_main_ik_sets = self._ensure_sets(base_name + "IK_Sets", allow_existing=False)
 
         fk_sub_sets = []
@@ -439,6 +475,13 @@ class SineSetupMain:
             sine_main_fk_sets.add(fk_sub_set)
             fk_sub_sets.append(fk_sub_set)
 
+        exp_sub_jnt_sets = []
+        for fk_setup in self.fk_setups:
+            jnts = fk_setup.jnt_exp
+            exp_sub_set = pm.sets(jnts, n=fk_setup.FK_chain_Grp_name + "_Exp_Sets")
+            sine_main_exp_sets.add(exp_sub_set)
+            exp_sub_jnt_sets.append(exp_sub_set)
+
         ik_sub_sets = []
         for ik_setup in self.ik_setups:
             ctrls = ik_setup.ctls_ik
@@ -446,10 +489,10 @@ class SineSetupMain:
             sine_main_ik_sets.add(ik_sub_set)
             ik_sub_sets.append(ik_sub_set)
 
-        element_sets.union([self.master_ctl, sine_main_fk_sets, sine_main_ik_sets])
+        element_sets.union([self.master_ctl, sine_main_fk_sets, sine_main_ik_sets, sine_main_exp_sets])
         sine_main_sets.add(element_sets)
 
-        sine_main_bake_sets = self._ensure_sets(sine_main_sets_name.replace("_Sets", "_Bake_Sets"))
+        sine_main_bake_sets = self._ensure_sets(sine_main_sets_name.replace("_Sets", "_Bake_Sets"), allow_existing=True)
         sine_sub_bake_sets = self._ensure_sets(base_name + "Bake_Sets", allow_existing=False)
         slave_nodes = [ctrl for chain in self.slaves.values() for ctrl in chain]
         sine_sub_bake_sets.union(slave_nodes)
@@ -467,43 +510,67 @@ class SineSetupMain:
 
     def set_exp(self, use_ribbon):
         if not use_ribbon:
-            for chain_index, fk_setup in enumerate(self.fk_setups):
+            for index, fk_setup in enumerate(self.fk_setups):
                 elements = fk_setup.jnt_exp
-                self._set_exp(self.master_ctl, elements, chain_index)
+                self._set_exp(self.master_ctl, elements, index, len(self.fk_setups), self.ik_setups[index])
 
     @staticmethod
-    def _set_exp(masterCtl, elements, chain_index):
-        joint_count = len(elements)
+    def _set_exp(masterCtl, elements, chain_index, chain_count, ik_setup):
+        jnt_count = len(elements)
+
         EXP = """
-            float $totalAmp = (({_masterName}.strength * 1.1) * ({_masterName}.strength * 1.1)) ;
+            float $sine_mult = {_ik_ctl}.sine_multiplier_All;
+            float $strength = {_masterName}.strength;
+
             \n
+            float $freqX = {_masterName}.loop_per_second_X * {_tau} * time ;
             float $falloffX = {_masterName}.falloffX * ({_joint_count}) * 0.1;  
             float $xVal = {_masterName}.ampX * 0.1 * (($falloffX / 5) + 1);
-            float $freqX = {_masterName}.speedX * 0.1  * {_tau} ;
-            float $delayX = {_masterName}.delayX * -5;
-            float $offX = {_masterName}.offset_frameX / {_frame_rate} * $freqX;
-            float $rdmX = {_masterName}.rdmX * noise({_masterName}.rdmX + {_chain_index});
+            float $xBias = {_masterName}.amp_bias_rangeX * noise({_masterName}.amp_bias_LPS_multX * $freqX 
+                                                                + ({_chain_index}+1)*{_masterName}.amp_bias_noiseX); 
+            float $delayX = {_masterName}.delayX * -7;
+            float $offX = {_masterName}.offset_frameX / {_frame_rate} * $freqX / time;
+            float $noiseX = {_masterName}.offset_noiseX * ({_chain_index}+1)/({_chain_count});
+            float $rdmX = {_masterName}.offset_rdmX * noise({_masterName}.offset_rdmX + {_chain_index});
+            float $ampOffX = {_masterName}.amp_offsetX;
+            float $plusMultX = {_masterName}.amp_positive_multX;
+            float $minusMultX = {_masterName}.amp_negative_multX;
             \n
+            float $freqY = {_masterName}.loop_per_second_Y * {_tau} * time;
             float $falloffY = {_masterName}.falloffY * ({_joint_count}) * 0.1;  
             float $yVal = {_masterName}.ampY * 0.1* (($falloffY / 5) + 1);
-            float $freqY = {_masterName}.speedY * 0.1  * {_tau} ;
-            float $delayY = {_masterName}.delayY * -5;
-            float $offY = {_masterName}.offset_frameY / {_frame_rate} * $freqY;
-            float $rdmY = {_masterName}.rdmY * noise({_masterName}.rdmY + {_chain_index});
+            float $yBias = {_masterName}.amp_bias_rangeY * noise({_masterName}.amp_bias_LPS_multY * $freqY 
+                                                                 + ({_chain_index}+1)*{_masterName}.amp_bias_noiseY); 
+            float $delayY = {_masterName}.delayY * -7;
+            float $offY = {_masterName}.offset_frameY / {_frame_rate} * $freqY / time;
+            float $noiseY = {_masterName}.offset_noiseY * ({_chain_index}+1)/({_chain_count});
+            float $rdmY = {_masterName}.offset_rdmY * noise({_masterName}.offset_rdmY + {_chain_index});
+            float $ampOffY = {_masterName}.amp_offsetY;
+            float $plusMultY = {_masterName}.amp_positive_multY;
+            float $minusMultY = {_masterName}.amp_negative_multY;
             \n
+            float $freqZ = {_masterName}.loop_per_second_Z * {_tau} * time;
             float $falloffZ = {_masterName}.falloffZ * ({_joint_count}) * 0.1;  
             float $zVal = {_masterName}.ampZ * 0.1* (($falloffZ / 5) + 1);
-            float $freqZ = {_masterName}.speedZ * 0.1 * {_tau} ;
-            float $delayZ = {_masterName}.delayZ * -5;
-            float $offZ = {_masterName}.offset_frameZ / {_frame_rate} * $freqZ;
-            float $rdmZ= {_masterName}.rdmZ * noise({_masterName}.rdmZ + {_chain_index});
+            float $zBias = {_masterName}.amp_bias_rangeZ * noise(({_masterName}.amp_bias_LPS_multZ * $freqZ / 100) 
+                                                                 + (({_chain_index}+1)*{_masterName}.amp_bias_noiseZ));
+            float $delayZ = {_masterName}.delayZ * -7;
+            float $offZ = {_masterName}.offset_frameZ / {_frame_rate} * $freqZ / time;
+            float $noiseZ = {_masterName}.offset_noiseZ * ({_chain_index}+1)/({_chain_count});
+            float $rdmZ= {_masterName}.offset_rdmZ * noise({_masterName}.offset_rdmZ + {_chain_index});
+            float $ampOffZ = {_masterName}.amp_offsetZ;
+            float $plusMultZ = {_masterName}.amp_positive_multZ;
+            float $minusMultZ = {_masterName}.amp_negative_multZ;
             """.format(_masterName=masterCtl.name(),
-                       _joint_count=joint_count,
+                       _joint_count=jnt_count,
                        _tau=tau,
                        _frame_rate=getFrameRate(),
-                       _chain_index=chain_index)
+                       _chain_index=chain_index,
+                       _chain_count=chain_count,
+                       _ik_ctl=ik_setup.ctls_ik[0].name()
+                       )
 
-        for index, item in enumerate(elements):
+        for jnt_index, item in enumerate(elements):
             if isinstance(item, str):
                 try:
                     pm.PyNode(item)
@@ -511,49 +578,77 @@ class SineSetupMain:
                     return pm.warning(item, " is not valid")
 
             EXP += """
-             // -----------------------------------------------------------------------\n
-             {_item}.rotateX = 
-                sin ( 
-                    time * $freqX 
-                    + $rdmX
-                    + $offX
-                    + $delayX
-                    * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0) 
-                    )   
-                * $totalAmp 
+             // -----------------------------------------------------------------------\n    
+            float $fk_mult_{_jnt_id} = {_ik_ctl}.FK_multiplier_{_jnt_id};       
+            float $sinX_{_index} = sin ( 
+                $freqX 
+                + $rdmX 
+                + $noiseX
+                + $offX
+                + $delayX
+                * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0) 
+                )
+                * 100 * (1 + $xBias)
                 * ({_index} - clamp(0,{_index},$falloffX)) / ({_joint_count} * 2.0)      
-                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
-                * $xVal; \n
-                
-             {_item}.rotateY = 
-                sin ( 
-                    time * $freqY
+                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                       
+                * $xVal
+                * $strength;
+            if($sinX_{_index}>=0)
+                {_item}.rotateX = $sinX_{_index} * $plusMultX;
+            if($sinX_{_index}<0)
+                {_item}.rotateX = $sinX_{_index} * $minusMultX;
+            if ({_index} == 1)
+                {_item}.rotateX += $ampOffX; 
+            {_item}.rotateX *= $sine_mult*$fk_mult_{_jnt_id};\n
+
+            float $sinY_{_index} = sin ( 
+                    $freqY
                     + $rdmY
+                    + $noiseY
                     + $offY
                     + $delayY
                     * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0) 
-                    )   
-                * $totalAmp 
-                * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0)      
-                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
-                * $yVal; \n
-                
-            {_item}.rotateZ = 
-                sin ( 
-                    time * $freqZ 
+                    )
+                    * 100 * (1 + $yBias)
+                    * ({_index} - clamp(0,{_index},$falloffY)) / ({_joint_count} * 2.0)      
+                    * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                         
+                    * $yVal
+                    * $strength;     
+            if($sinY_{_index}>=0)
+                {_item}.rotateY = $sinY_{_index} * $plusMultY;
+            if($sinY_{_index}<0)
+                {_item}.rotateY = $sinY_{_index} * $minusMultY;
+            if ({_index} == 1)
+                {_item}.rotateY += $ampOffY;
+            {_item}.rotateY *= $sine_mult*$fk_mult_{_jnt_id}; \n
+
+            float $sinZ_{_index} = sin ( 
+                    $freqZ 
                     + $rdmZ
+                    + $noiseZ
                     + $offZ 
-                    + $delayZ 
+                    + $delayZ
                     * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0) 
-                    )   
-                * $totalAmp 
-                * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0)      
-                * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                          
-                * $zVal; \n
+                    )
+                     * 100 * (1 + $zBias)
+                    * ({_index} - clamp(0,{_index},$falloffZ)) / ({_joint_count} * 2.0)      
+                    * (1.0 - ({_index}+1)/ ({_joint_count} * 2.0))                         
+                    * $zVal
+                    * $strength;  
+            if ({_index} == 1)
+                $sinZ_{_index} += $ampOffZ;
+            if($sinZ_{_index}>=0)
+                {_item}.rotateZ = $sinZ_{_index} * $plusMultZ;
+            if($sinZ_{_index}<0)
+                {_item}.rotateZ = $sinZ_{_index} * $minusMultZ;
+            {_item}.rotateZ *= $sine_mult*$fk_mult_{_jnt_id};
+            \n
              // -----------------------------------------------------------------------\n
                 """.format(_item=item,
-                           _index=index + 1,
-                           _joint_count=float(joint_count),
+                           _index=int(jnt_index + 1),
+                           _jnt_id=int(jnt_index),
+                           _joint_count=float(jnt_count),
+                           _ik_ctl=ik_setup.ctls_ik[0].name()
                            )
             pm.delete(item, expressions=1)
         pm.expression(s=EXP,
