@@ -172,7 +172,7 @@ class PyTitleButton(QtWidgets.QPushButton):
     # ///////////////////////////////////////////////////////////////
     def icon_paint(self, qp, image, rect):
 
-        size = QtCore.QSize(rect.width()/4.5, rect.height()/4.5)
+        size = QtCore.QSize(rect.width()/3, rect.height()/3)
         icon = QtGui.QIcon(image).pixmap(size)
         # icon = QtGui.QPixmap(image)
 

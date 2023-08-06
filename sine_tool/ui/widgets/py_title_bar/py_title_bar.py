@@ -1,5 +1,7 @@
 # IMPORT DIV
 # ///////////////////////////////////////////////////////////////
+from PySide2 import QtSvg
+
 from .py_div import PyDiv
 # IMPORT BUTTON
 # ///////////////////////////////////////////////////////////////
@@ -32,7 +34,7 @@ class PyTitleBar(QtWidgets.QWidget):
             parent,
             app_parent,
             logo_image="logo_top_100x22.svg",
-            logo_width=100 * DPI_SCALE,
+            logo_width=150 * DPI_SCALE,
             buttons=None,
             dark_one="#1b1e23",
             bg_color="#343b48",
@@ -46,7 +48,7 @@ class PyTitleBar(QtWidgets.QWidget):
             icon_color_active="#f5f6f9",
             context_color="#6c99f4",
             text_foreground="#8a95aa",
-            radius=8 * DPI_SCALE,
+            radius=12 * DPI_SCALE,
             font_family="Segoe UI",
             title_size=10,
             is_custom_title_bar=True,
@@ -264,9 +266,21 @@ class PyTitleBar(QtWidgets.QWidget):
         self.logo_svg = QtWidgets.QLabel()
         # self.logo_svg.load(Functions.set_svg_image(self._logo_image))
         # self.logo_svg.load(Functions.set_svg_image(self._logo_image))
-        pix = QtGui.QPixmap(Functions.set_svg_image(self._logo_image))
-        self.setMaximumHeight(title_height * DPI_SCALE)
-        self.logo_svg.setPixmap(pix)
+        # pix = QtGui.QPixmap(Functions.set_svg_image(self._logo_image))
+        # logo = QtGui.QPixmap(Functions.set_svg_image(self._logo_image))
+        # pixmap = Functions.pixmap_svg_resize(self._logo_image, DPI_SCALE)
+        # svg_file = Functions.set_svg_image(self._logo_image)
+        svg_file = Functions.set_svg_image(self._logo_image)
+        svg_renderer = QtSvg.QSvgRenderer(svg_file)
+        svg_size = svg_renderer.defaultSize() * DPI_SCALE
+        pixmap = QtGui.QPixmap(svg_size)
+        pixmap.fill(QtCore.Qt.transparent)
+        painter = QtGui.QPainter(pixmap)
+        svg_renderer.render(painter)
+        painter.end()
+
+        self.setMaximumHeight(title_height * max(DPI_SCALE,1.5))
+        self.logo_svg.setPixmap(pixmap)
         self.top_logo_layout.addWidget(self.logo_svg, QtCore.Qt.AlignCenter, QtCore.Qt.AlignCenter)
 
         # CUSTOM BUTTONS LAYOUT

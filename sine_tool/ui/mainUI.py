@@ -20,7 +20,7 @@ from .widgets.py_push_button import PyPushButton
 from ..utils import *
 from ..utils.helper import disable_undo
 from ..utils.pipeline_helper import PIPLINE_AVAILABLE, USER_PATH, PROJECT_NAME, USER_NAME
-from ..utils.py_compatible import ensure_text
+from ..utils.py_compatible import ensure_text, string_types
 from ..operation import SineSetupMain
 
 MODULE_DIR = os.path.dirname(os.path.normpath(__file__)).replace("\\", "/")
@@ -37,7 +37,6 @@ COLOR_INDEX = {}
 for __COLOR in range(2, 32):
     COLOR_INDEX[__COLOR] = [round(X * 255.0) for X in cmds.colorIndex(__COLOR, q=1)]
 
-DPI_SCALE = 1
 
 class SineUI(MainWindow):
     def __init__(self):
@@ -53,9 +52,11 @@ class SineUI(MainWindow):
         self.restore_config()
         self.make_tooltips_toplayer()
 
+        print(self.titleBar.height())
+
     def create_widgets(self):
         font = QtGui.QFont()
-        font.setPointSize(self.settings["font"]["text_size"] * DPI_SCALE * 1.2)
+        font.setPointSize(self.settings["font"]["text_size"] * 1.2)
         font.setBold(True)
         text = [
             "Tips : you can override namespaces by using the UI below",
@@ -70,6 +71,7 @@ class SineUI(MainWindow):
         text = ["Remove from List", "リストから削除"]
         self.left_top_btn2 = PyPushButton(text[self._L])
         text = ["Preset Tab", "Preset Tab"]
+        offsetPos = [0, 0] if DPI_SCALE == 1 else [0, 40 * DPI_SCALE]
         self.left_top_btn3 = PyIconButton(icon_path=Functions.set_svg_icon("icon_settings.svg"),
                                           parent=self.parent(),
                                           app_parent=None,
@@ -79,6 +81,7 @@ class SineUI(MainWindow):
                                           height=self.left_top_btn.height(),
                                           context_color=self.themes["app_color"]["context_pressed"],
                                           bg_color_pressed=self.themes["app_color"]["dark_four"],
+                                          # offsetPos=offsetPos
                                           )
         text = ["Export Preset", "Preset出力"]
         self.left_top_btn4 = PyIconButton(icon_path=Functions.set_svg_icon("icon_save.svg"),
@@ -378,7 +381,9 @@ class SineUI(MainWindow):
                             if hasCns:
                                 ele_hasCns.append(item)
                         for subset in sub_sets:
-                            subset_n = [i.name() for i in subset]
+                            # if isinstance(subset, string_types):
+                            #     subset = pm.PyNode(subset)
+                            subset_n = [i.name() for i in subset.members()]
                             ele_in_sets.extend(subset_n)
                         already_assigned = [i for i in ele_hasCns if i in ele_in_sets]
                         text = ["some elements already assigned:\n{}".format(already_assigned),
@@ -530,7 +535,11 @@ class SineSettingsDialog(SubWindow):
         self.create_connections()
         self.titleBar.set_title("Sine Ctrl Settings")
         self.setWindowTitle("Sine Ctrl Settings")
-        self.setFixedSize(420, 390)
+        if DPI_SCALE == 1.5:
+            self.setFixedSize(380 * DPI_SCALE, 350 * DPI_SCALE)
+        else:
+            self.setFixedSize(420 * DPI_SCALE, 390 * DPI_SCALE)
+
         self.make_tooltips_toplayer()
 
     def init(self):
@@ -547,7 +556,7 @@ class SineSettingsDialog(SubWindow):
 
     def create_widgets(self):
         font = QtGui.QFont()
-        font.setPointSize(self.settings["font"]["text_size"] * DPI_SCALE * 1.2)
+        font.setPointSize(self.settings["font"]["text_size"] * 1.2)
         font.setBold(True)
         font.setFamily("Segoe UI")
         text = ["Undo Queue,Key Frames will be deleted", "Undo Queueとキーフレームが削除されます"]
@@ -574,7 +583,7 @@ class SineSettingsDialog(SubWindow):
         sub_content_layout = QtWidgets.QVBoxLayout()
         form_layout = QtWidgets.QFormLayout()
         font = QtGui.QFont()
-        font.setPointSize(self.settings["font"]["text_size"] * DPI_SCALE)
+        font.setPointSize(self.settings["font"]["text_size"])
         font.setFamily("Segoe UI")
 
         # # SLIDERS

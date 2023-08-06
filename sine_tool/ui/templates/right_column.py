@@ -54,9 +54,9 @@ class RightColumn(QtWidgets.QWidget):
                                         bg_color=self.themes["app_color"]["bg_three"],
                                         bg_color_hover="#1e2229",
                                         bg_color_pressed=self.themes["app_color"]["dark_one"],
-                                        width=25,
-                                        height=25,
-                                        offsetPos=[0, -20]
+                                        width=25*DPI_SCALE,
+                                        height=25*DPI_SCALE,
+                                        offsetPos=[0, -20*DPI_SCALE]
                                         )
         text = ["Export Preset", "プリセット出力"]
         self.export_btn = PyIconButton(icon_path=Functions.set_svg_icon("icon_save.svg"),
@@ -66,9 +66,9 @@ class RightColumn(QtWidgets.QWidget):
                                        bg_color=self.themes["app_color"]["bg_three"],
                                        bg_color_hover="#1e2229",
                                        bg_color_pressed=self.themes["app_color"]["dark_one"],
-                                       width=25,
-                                       height=25,
-                                       offsetPos=[-25, -20]
+                                       width=25*DPI_SCALE,
+                                       height=25*DPI_SCALE,
+                                       offsetPos=[-25*DPI_SCALE, -20*DPI_SCALE]
                                        )
         self.file_lst = PyListWidget()
 
